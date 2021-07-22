@@ -1,0 +1,26 @@
+name: dmp
+channels:
+  - defaults
+  - pytorch
+  - open3d-admin
+dependencies:
+  - python=3.7
+  - cython
+  - pytorch=1.7.0
+  - cudatoolkit=10.2
+  - numpy
+  - matplotlib
+  - tensorflow
+  - tensorboard
+  - open3d
+  - pip
+  - pip:
+    - pyyaml
+    - addict
+    - plyfile
+    - --find-links  https://pytorch-geometric.com/whl/torch-1.7.0+cu102.html
+    - torch-scatter
+    - torch-sparse
+    - torch-cluster
+    - torch-spline-conv
+    - torch-geometric
