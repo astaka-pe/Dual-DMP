@@ -89,8 +89,8 @@ def mesh_laplacian_loss(pred_pos, ve, edges):
     return lap_loss
 
 def mad(mesh1, mesh2):
-    fn1 = Mesh.compute_face_normals(mesh1)
-    fn2 = Mesh.compute_face_normals(mesh2)
+    fn1, _ = Mesh.compute_face_normals(mesh1)
+    fn2, _ = Mesh.compute_face_normals(mesh2)
     inner = [np.inner(fn1[i], fn2[i]) for i in range(fn1.shape[0])]
     sad = np.rad2deg(np.arccos(np.clip(inner, -1.0, 1.0)))
     mad = np.sum(sad) / len(sad)

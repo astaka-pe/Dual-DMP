@@ -80,29 +80,30 @@ init_mad = Loss.mad(n_mesh, gt_mesh)
 init_norm_loss = Loss.mse_loss(torch.tensor(n_mesh.vn, dtype=float), torch.tensor(gt_mesh.vn, dtype=float))
 print("init_mad: ", init_mad, " init_norm_loss: ", float(init_norm_loss))
 
-optimizer_pos = torch.optim.Adamax(posnet.parameters(), lr=FLAGS.lr)
+#optimizer_pos = torch.optim.Adamax(posnet.parameters(), lr=FLAGS.lr)
 optimizer_norm = torch.optim.Adamax(normnet.parameters(), lr=FLAGS.lr)
 
 for epoch in range(1, FLAGS.iter+1):
-    posnet.train()
+    #posnet.train()
     normnet.train()
-    optimizer_pos.zero_grad()
+    #optimizer_pos.zero_grad()
     optimizer_norm.zero_grad()
-    pos = posnet(dataset)
+    #pos = posnet(dataset)
     
-    loss_pos1 = Loss.mse_loss(pos, torch.tensor(n_mesh.vs, dtype=float).to(device))
-    loss_pos2 = FLAGS.lap * Loss.mesh_laplacian_loss(pos, n_mesh.ve, n_mesh.edges)
+    #loss_pos1 = Loss.mse_loss(pos, torch.tensor(n_mesh.vs, dtype=float).to(device))
+    #loss_pos2 = FLAGS.lap * Loss.mesh_laplacian_loss(pos, n_mesh.ve, n_mesh.edges)
 
     norm = normnet(dataset)
     loss_norm1 = Loss.mse_loss(norm, torch.tensor(n_mesh.vn, dtype=float).to(device))
-    loss_norm2 = FLAGS.lap * Loss.mesh_laplacian_loss(norm, n_mesh.ve, n_mesh.edges)
+    loss_norm2 = 2.0 * Loss.mesh_laplacian_loss(norm, n_mesh.ve, n_mesh.edges)
 
-    loss = loss_pos1 + loss_pos2 + loss_norm1 + loss_norm2
+    #loss = loss_pos1 + loss_pos2 + loss_norm1 + loss_norm2
+    loss = loss_norm1 + loss_norm2
     loss.backward()
-    optimizer_pos.step()
+    #optimizer_pos.step()
     optimizer_norm.step()
-    writer.add_scalar("pos1", loss_pos1, epoch)
-    writer.add_scalar("pos2", loss_pos2, epoch)
+    #writer.add_scalar("pos1", loss_pos1, epoch)
+    #writer.add_scalar("pos2", loss_pos2, epoch)
     writer.add_scalar("norm1", loss_norm1, epoch)
     writer.add_scalar("norm2", loss_norm2, epoch)
     
@@ -110,6 +111,7 @@ for epoch in range(1, FLAGS.iter+1):
         print('Epoch %d | Loss: %.4f' % (epoch, loss.item()))
         
     if epoch % 50 == 0:
+        """
         o_mesh = ObjMesh(n_file)
         o_mesh.vs = o_mesh.vertices = pos.to('cpu').detach().numpy().copy()
         o_mesh.faces = n_mesh.faces
@@ -117,9 +119,9 @@ for epoch in range(1, FLAGS.iter+1):
         mad_value = Loss.mad(o_mesh, gt_mesh)
         min_mad = min(mad_value, min_mad)
         print("mad_value: ", mad_value, "min_mad: ", min_mad)
-
+        """
         test_norm_loss = Loss.mse_loss(norm, torch.tensor(gt_mesh.vn, dtype=float).to(device))
         min_norm_loss = min(min_norm_loss, test_norm_loss)
         print("test_norm_loss: ", float(test_norm_loss), "min_norm_loss: ", float(min_norm_loss))
-        writer.add_scalar("MAD", mad_value, epoch)
+        #writer.add_scalar("MAD", mad_value, epoch)
         writer.add_scalar("test_norm", test_norm_loss, epoch)

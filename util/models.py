@@ -22,11 +22,15 @@ class Mesh:
     def __init__(self, path):
         self.path = path
         self.vs, self.faces = self.fill_from_file(path)
-        self.fn = self.compute_face_normals()
+        self.fn, self.fa = self.compute_face_normals()
         self.device = 'cpu'
         self.build_gemm() #self.edges, self.ve
         self.vn = self.compute_vert_normals()
-        self.build_lap_mat()
+        #self.build_uni_lap()
+        self.build_vf()
+        self.build_mesh_lap()
+        self.build_div()
+        #self.poisson_mesh_edit()
     
     def fill_from_file(self, path):
         vs, faces = [], []
@@ -112,9 +116,10 @@ class Mesh:
     def compute_face_normals(self):
         face_normals = np.cross(self.vs[self.faces[:, 1]] - self.vs[self.faces[:, 0]], self.vs[self.faces[:, 2]] - self.vs[self.faces[:, 1]])
         norm = np.sqrt(np.sum(np.square(face_normals), 1))
+        face_areas = 0.5 * np.sqrt((face_normals**2).sum(axis=1))
         face_normals /= np.tile(norm, (3, 1)).T
 
-        return face_normals
+        return face_normals, face_areas
 
     def compute_vert_normals(self):
         vert_normals = np.zeros((3, len(self.vs)))
@@ -132,7 +137,8 @@ class Mesh:
 
         return vert_normals
     
-    def build_lap_mat(self):
+    def build_uni_lap(self):
+        """compute uniform laplacian matrix"""
         vs = torch.tensor(self.vs.T, dtype=torch.float)
         edges = self.edges
         ve = self.ve
@@ -168,3 +174,130 @@ class Mesh:
         self.lapmat = torch.sparse.FloatTensor(torch.stack([mat_rows, mat_cols], dim=0),
                                             mat_vals,
                                             size=torch.Size([num_verts, num_verts]))
+    
+    def build_vf(self):
+        vf = [set() for _ in range(len(self.vs))]
+        for i, f in enumerate(self.faces):
+            vf[f[0]].add(i)
+            vf[f[1]].add(i)
+            vf[f[2]].add(i)
+        self.vf = vf
+    
+    def build_mesh_lap(self):
+        """compute mesh laplacian matrix"""
+        vs = self.vs
+        vf = self.vf
+        fa = self.fa
+        edges = self.edges
+        faces = self.faces
+        e_dict = {}
+        
+        for e in edges:
+            e0 = min(e)
+            e1 = max(e)
+            e_dict[(e0, e1)] = []
+        for v in range(len(vs)):
+            n_f = vf[v]
+            for f in n_f:
+                n_v = faces[f]
+                if n_v[1] == v:
+                    n_v = n_v[[1,2,0]]
+                elif n_v[2] == v:
+                    n_v = n_v[[2,1,0]]
+                s = vs[n_v[1]] - vs[n_v[0]]
+                t = vs[n_v[2]] - vs[n_v[1]]
+                u = vs[n_v[0]] - vs[n_v[2]]
+                i1 = np.inner(-s, t)
+                i2 = np.inner(-t, u)
+                n1 = np.linalg.norm(s) * np.linalg.norm(t)
+                n2 = np.linalg.norm(t) * np.linalg.norm(u)
+                c1 = np.clip(i1 / n1, -1.0, 1.0)
+                c2 = np.clip(i2 / n2, -1.0, 1.0)
+                cot1 = c1 / np.sqrt(1 - c1 ** 2)
+                cot2 = c2 / np.sqrt(1 - c2 ** 2)
+                keys1 = (min(n_v[0], n_v[1]), max(n_v[0], n_v[1]))
+                keys2 = (min(n_v[0], n_v[2]), max(n_v[0], n_v[2]))
+                if len(e_dict[keys1]) < 2:
+                    e_dict[keys1].append(cot2)
+                if len(e_dict[keys2]) < 2:
+                    e_dict[keys2].append(cot1)
+        for e in e_dict:
+            e_dict[e] = -0.5 * (e_dict[e][0] + e_dict[e][1])
+        
+        C_ind = [[], []]
+        C_val = []
+        ident = [0] * len(vs)
+        for e in e_dict:
+            C_ind[0].append(e[0])
+            C_ind[1].append(e[1])
+            C_ind[0].append(e[1])
+            C_ind[1].append(e[0])
+            C_val.append(e_dict[e])
+            C_val.append(e_dict[e])
+            ident[e[0]] += -1.0 * e_dict[e]
+            ident[e[1]] += -1.0 * e_dict[e]
+        for i in range(len(vs)):
+            C_ind[0].append(i)
+            C_ind[1].append(i)
+        C_val = C_val + ident
+        C_ind = torch.LongTensor(C_ind)
+        C_val = torch.FloatTensor(C_val)
+        # cotangent matrix
+        C = torch.sparse.FloatTensor(C_ind, C_val, torch.Size([len(vs), len(vs)]))
+
+        M_ind = torch.stack([torch.arange(len(vs)), torch.arange(len(vs))], dim=0).long()
+        M_val = []
+        for v in range(len(vs)):
+            faces = list(vf[v])
+            va = 3.0 / (sum(fa[faces]) + 1e-12)
+            M_val.append(va)
+        M_val = torch.FloatTensor(M_val)
+        # diagonal mass inverse matrix
+        Minv = torch.sparse.FloatTensor(M_ind, M_val, torch.Size([len(vs), len(vs)]))
+        #L = torch.sparse.mm(Minv, sm.to_dense())
+        self.mesh_lap = C
+
+    def build_div(self):
+        vs = self.vs
+        vn = self.vn
+        faces = self.faces
+        fn = self.fn
+        fa = self.fa
+        vf = self.vf
+        grad_b = [[] for _ in range(len(vs))]
+        for i, v in enumerate(vf):
+            for t in v:
+                f = faces[t]
+                f_n = fn[t]
+                a = fa[t]
+                if f[1] == i:
+                    f = [f[1], f[2], f[0]]
+                elif f[2] == i:
+                    f = [f[2], f[1], f[0]]
+                x_kj = vs[f[2]] - vs[f[1]]
+                x_kj = f_n * np.dot(x_kj, f_n) + np.cross(f_n, x_kj)
+                x_kj /= 2
+                grad_b[i].append(x_kj.tolist())
+
+        div_v = [[] for _ in range(len(vn))]
+        for i in range(len(vn)):
+            tn = vn[i]
+            g = np.array(grad_b[i])
+            div_v[i] = np.sum(g, 0) * tn
+        self.div = np.array(div_v)
+
+    def poisson_mesh_edit(self):
+        new_vs = []
+        C = self.mesh_lap.to_dense()
+        B = self.div
+        # boundary condition
+        C_add = torch.eye(len(self.vs))
+        C = torch.cat([C, C_add], dim=0)
+        B_add = torch.from_numpy(self.vs)
+        B = torch.cat([torch.from_numpy(B), B_add], dim=0)
+        A = torch.matmul(C.T, C)
+        Ainv = torch.inverse(A)
+        CtB = torch.matmul(C.T.float(), B.float())
+        new_vs = torch.matmul(Ainv, CtB)
+
+        return new_vs
