@@ -1,5 +1,6 @@
 datasets
 logs
+_program
 
 *.obj
 *.ipynb

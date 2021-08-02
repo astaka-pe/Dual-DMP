@@ -26,12 +26,10 @@ class Mesh:
         self.device = 'cpu'
         self.build_gemm() #self.edges, self.ve
         self.vn = self.compute_vert_normals()
-        #self.build_uni_lap()
+        self.build_uni_lap()
         self.build_vf()
         self.build_mesh_lap()
-        self.build_div()
-        #self.poisson_mesh_edit()
-    
+
     def fill_from_file(self, path):
         vs, faces = [], []
         f = open(path)
@@ -254,50 +252,107 @@ class Mesh:
         M_val = torch.FloatTensor(M_val)
         # diagonal mass inverse matrix
         Minv = torch.sparse.FloatTensor(M_ind, M_val, torch.Size([len(vs), len(vs)]))
-        #L = torch.sparse.mm(Minv, sm.to_dense())
+        C = torch.sparse.mm(Minv, C.to_dense()).to_sparse()
         self.mesh_lap = C
 
-    def build_div(self):
-        vs = self.vs
-        vn = self.vn
-        faces = self.faces
-        fn = self.fn
-        fa = self.fa
-        vf = self.vf
-        grad_b = [[] for _ in range(len(vs))]
-        for i, v in enumerate(vf):
-            for t in v:
-                f = faces[t]
-                f_n = fn[t]
-                a = fa[t]
-                if f[1] == i:
-                    f = [f[1], f[2], f[0]]
-                elif f[2] == i:
-                    f = [f[2], f[1], f[0]]
-                x_kj = vs[f[2]] - vs[f[1]]
-                x_kj = f_n * np.dot(x_kj, f_n) + np.cross(f_n, x_kj)
-                x_kj /= 2
-                grad_b[i].append(x_kj.tolist())
+"""for poisson mesh edit"""
+def build_div(n_mesh, vn):
+    vs = n_mesh.vs
+    faces = n_mesh.faces
+    fn = n_mesh.fn
+    fa = n_mesh.fa
+    vf = n_mesh.vf
+    grad_b = [[] for _ in range(len(vs))]
+    for i, v in enumerate(vf):
+        for t in v:
+            f = faces[t]
+            f_n = fn[t]
+            a = fa[t]
+            if f[1] == i:
+                f = [f[1], f[2], f[0]]
+            elif f[2] == i:
+                f = [f[2], f[1], f[0]]
+            x_kj = vs[f[2]] - vs[f[1]]
+            x_kj = f_n * np.dot(x_kj, f_n) + np.cross(f_n, x_kj)
+            x_kj /= 2
+            grad_b[i].append(x_kj.tolist())
 
-        div_v = [[] for _ in range(len(vn))]
-        for i in range(len(vn)):
-            tn = vn[i]
-            g = np.array(grad_b[i])
-            div_v[i] = np.sum(g, 0) * tn
-        self.div = np.array(div_v)
+    div_v = [[] for _ in range(len(vn))]
+    for i in range(len(vn)):
+        tn = vn[i]
+        g = np.array(grad_b[i])
+        div_v[i] = np.dot(np.sum(g, 0), tn)
+    div = np.array(div_v)
+    div = np.tile(div, 3).reshape(3, -1).T
+    return div
 
-    def poisson_mesh_edit(self):
-        new_vs = []
-        C = self.mesh_lap.to_dense()
-        B = self.div
-        # boundary condition
-        C_add = torch.eye(len(self.vs))
-        C = torch.cat([C, C_add], dim=0)
-        B_add = torch.from_numpy(self.vs)
-        B = torch.cat([torch.from_numpy(B), B_add], dim=0)
-        A = torch.matmul(C.T, C)
-        Ainv = torch.inverse(A)
-        CtB = torch.matmul(C.T.float(), B.float())
-        new_vs = torch.matmul(Ainv, CtB)
+def jacobi(n_mesh, div, iter=10):
+    # preparation
+    C = n_mesh.mesh_lap.to_dense()
+    #C = n_mesh.lapmat.to_dense()
+    B = div
+    # boundary condition
+    C_add = torch.eye(len(n_mesh.vs))
+    C = torch.cat([C, C_add], dim=0)
+    B_add = torch.from_numpy(n_mesh.vs)
+    B = torch.cat([torch.from_numpy(B), B_add], dim=0)
+    B = torch.matmul(C.T.float(), B.float())
+    A = torch.matmul(C.T, C)
+    # solve Ax=b by jacobi
+    x = torch.from_numpy(n_mesh.vs).float()
 
-        return new_vs
+    for i in range(iter):
+        r = B - torch.matmul(A, x)
+        alpha = torch.diagonal(torch.matmul(r.T, r)) / (torch.diagonal(torch.matmul(torch.matmul(r.T, A), r)) + 1e-12)
+        x += alpha * r
+    
+    return x
+
+def poisson_mesh_edit(n_mesh, div):
+    C = n_mesh.mesh_lap.to_dense()
+    B = div
+    # boundary condition
+    C_add = torch.eye(len(n_mesh.vs))
+    C = torch.cat([C, C_add], dim=0)
+    B_add = torch.from_numpy(n_mesh.vs)
+    B = torch.cat([torch.from_numpy(B), B_add], dim=0)
+    A = torch.matmul(C.T, C)
+    Ainv = torch.inverse(A)
+    CtB = torch.matmul(C.T.float(), B.float())
+    new_vs = torch.matmul(Ainv, CtB)
+
+    return new_vs
+
+def cg(n_mesh, div, iter=50):
+    # preparation
+    C = n_mesh.mesh_lap.to_dense()
+    #C = n_mesh.lapmat.to_dense()
+    B = div
+    # boundary condition
+    C_add = torch.eye(len(n_mesh.vs))
+    C = torch.cat([C, C_add], dim=0)
+    Ct = C.T.to_sparse()
+    C = C.to_sparse()
+    B_add = torch.from_numpy(n_mesh.vs)
+    B = torch.cat([torch.from_numpy(B), B_add], dim=0)
+    B = torch.sparse.mm(Ct.float(), B.float())
+    A = torch.sparse.mm(Ct, C.to_dense())
+    # solve Ax=b by cg
+    x_0 = torch.from_numpy(n_mesh.vs).float()
+    r_0 = B - torch.matmul(A, x_0)
+    p_0 = r_0
+    for i in range(iter):
+        y_0 = torch.matmul(A, p_0)
+        alpha = torch.diagonal(torch.matmul(r_0.T, r_0)) / (torch.diagonal(torch.matmul(p_0.T, y_0) + 1e-12))
+        x_1 = x_0 + alpha * p_0
+        r_1 = r_0 - alpha * y_0
+        if torch.sum(torch.norm(r_1, dim=0), dim=0) < 1e-4:
+            break
+        beta = torch.diagonal(torch.matmul(r_1.T, r_1)) / (torch.diagonal(torch.matmul(r_0.T, r_0)) + 1e-12)
+        p_1 = r_1 + beta * p_0
+        
+        x_0 = x_1
+        r_0 = r_1
+        p_0 = p_1
+    
+    return x_1

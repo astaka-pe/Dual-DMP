@@ -7,10 +7,11 @@ import sys
 import glob
 import argparse
 import json
+import util.loss as Loss
+import util.models as Models
 from util.objmesh import ObjMesh
 from util.models import Dataset, Mesh
 from util.networks import PosNet, NormalNet
-import util.loss as Loss
 
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.data import Data
@@ -111,11 +112,13 @@ for epoch in range(1, FLAGS.iter+1):
         print('Epoch %d | Loss: %.4f' % (epoch, loss.item()))
         
     if epoch % 50 == 0:
-        """
+        div = Models.build_div(n_mesh, norm.to('cpu').detach().numpy().copy())
+        new_vs = Models.cg(n_mesh, div)
         o_mesh = ObjMesh(n_file)
-        o_mesh.vs = o_mesh.vertices = pos.to('cpu').detach().numpy().copy()
+        o_mesh.vs = o_mesh.vertices = new_vs
         o_mesh.faces = n_mesh.faces
-        #o_mesh.save(out_dir + '/' + str(epoch) + '_output.obj')
+        o_mesh.save('datasets/' + mesh_name + '/output/' + str(epoch) + '_output.obj')
+        """
         mad_value = Loss.mad(o_mesh, gt_mesh)
         min_mad = min(mad_value, min_mad)
         print("mad_value: ", mad_value, "min_mad: ", min_mad)
