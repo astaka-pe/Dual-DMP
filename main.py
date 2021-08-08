@@ -16,7 +16,7 @@ from util.networks import PosNet, NormalNet
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.data import Data
 
-parser = argparse.ArgumentParser(description='NAC for mesh')
+parser = argparse.ArgumentParser(description='DMP_adv for mesh')
 parser.add_argument('-i', '--input', type=str, required=True)
 parser.add_argument('--lr', type=float, default=0.01)
 parser.add_argument('--iter', type=int, default=5000)
@@ -27,7 +27,7 @@ FLAGS = parser.parse_args()
 for k, v in vars(FLAGS).items():
     print('{:10s}: {}'.format(k, v))
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 file_path = FLAGS.input
 gt_file = glob.glob(file_path + '/*_gt.obj')[0]
@@ -38,6 +38,8 @@ mesh_name = gt_file.split('/')[-2]
 
 gt_mesh = Mesh(gt_file)
 n_mesh = Mesh(n_file)
+o1_mesh = Mesh(n_file)
+#o2_mesh = Mesh(n_file)
 s_mesh = Mesh(s_file)
 
 # node-features and edge-index
@@ -81,50 +83,61 @@ init_mad = Loss.mad(n_mesh, gt_mesh)
 init_norm_loss = Loss.mse_loss(torch.tensor(n_mesh.vn, dtype=float), torch.tensor(gt_mesh.vn, dtype=float))
 print("init_mad: ", init_mad, " init_norm_loss: ", float(init_norm_loss))
 
-#optimizer_pos = torch.optim.Adamax(posnet.parameters(), lr=FLAGS.lr)
+optimizer_pos = torch.optim.Adamax(posnet.parameters(), lr=FLAGS.lr)
 optimizer_norm = torch.optim.Adamax(normnet.parameters(), lr=FLAGS.lr)
 
 for epoch in range(1, FLAGS.iter+1):
-    #posnet.train()
+    posnet.train()
     normnet.train()
-    #optimizer_pos.zero_grad()
+    optimizer_pos.zero_grad()
     optimizer_norm.zero_grad()
-    #pos = posnet(dataset)
-    
-    #loss_pos1 = Loss.mse_loss(pos, torch.tensor(n_mesh.vs, dtype=float).to(device))
-    #loss_pos2 = FLAGS.lap * Loss.mesh_laplacian_loss(pos, n_mesh.ve, n_mesh.edges)
+
+    pos = posnet(dataset)
+    loss_pos1 = Loss.mse_loss(pos, torch.tensor(n_mesh.vs, dtype=float).to(device))
+    loss_pos2 = FLAGS.lap * Loss.mesh_laplacian_loss(pos, n_mesh.ve, n_mesh.edges)
 
     norm = normnet(dataset)
     loss_norm1 = Loss.mse_loss(norm, torch.tensor(n_mesh.vn, dtype=float).to(device))
     loss_norm2 = 2.0 * Loss.mesh_laplacian_loss(norm, n_mesh.ve, n_mesh.edges)
 
-    #loss = loss_pos1 + loss_pos2 + loss_norm1 + loss_norm2
-    loss = loss_norm1 + loss_norm2
-    loss.backward()
-    #optimizer_pos.step()
+    o1_mesh.vs = pos.to('cpu').detach().numpy().copy()
+    o1_mesh.vn = norm2 = Mesh.compute_vert_normals(o1_mesh)
+    loss_pos3 = Loss.mse_loss(norm, torch.tensor(norm2, dtype=float).to(device))
+    
+    loss_pos = loss_pos1 + loss_pos2 + loss_pos3
+    loss_norm = loss_norm1 + loss_norm2
+    loss_pos.backward(retain_graph=True)
+    loss_norm.backward()
+    optimizer_pos.step()
     optimizer_norm.step()
-    #writer.add_scalar("pos1", loss_pos1, epoch)
-    #writer.add_scalar("pos2", loss_pos2, epoch)
+
+    writer.add_scalar("pos1", loss_pos1, epoch)
+    writer.add_scalar("pos2", loss_pos2, epoch)
+    writer.add_scalar("pos3", loss_pos3, epoch)
+    writer.add_scalar("pos", loss_pos, epoch)
     writer.add_scalar("norm1", loss_norm1, epoch)
     writer.add_scalar("norm2", loss_norm2, epoch)
-    
+    writer.add_scalar("norm", loss_norm, epoch)
+
     if epoch % 10 == 0:
-        print('Epoch %d | Loss: %.4f' % (epoch, loss.item()))
+        print('Epoch %d || Loss_P: %.4f | Loss_N: %.4f' % (epoch, loss_pos.item(), loss_norm.item()))
         
     if epoch % 50 == 0:
-        div = Models.build_div(n_mesh, norm.to('cpu').detach().numpy().copy())
-        new_vs = Models.cg(n_mesh, div)
-        o_mesh = ObjMesh(n_file)
-        o_mesh.vs = o_mesh.vertices = new_vs
-        o_mesh.faces = n_mesh.faces
-        o_mesh.save('datasets/' + mesh_name + '/output/' + str(epoch) + '_output.obj')
-        """
-        mad_value = Loss.mad(o_mesh, gt_mesh)
-        min_mad = min(mad_value, min_mad)
-        print("mad_value: ", mad_value, "min_mad: ", min_mad)
-        """
+        """DMP-Norm"""
         test_norm_loss = Loss.mse_loss(norm, torch.tensor(gt_mesh.vn, dtype=float).to(device))
         min_norm_loss = min(min_norm_loss, test_norm_loss)
         print("test_norm_loss: ", float(test_norm_loss), "min_norm_loss: ", float(min_norm_loss))
-        #writer.add_scalar("MAD", mad_value, epoch)
         writer.add_scalar("test_norm", test_norm_loss, epoch)
+        """
+        div = Models.build_div(n_mesh, norm.to('cpu').detach().numpy().copy())
+        new_vs = Models.cg(n_mesh, div)
+        o2_mesh.vs = new_vs
+        Mesh.save(o2_mesh, 'datasets/' + mesh_name + '/output/' + str(epoch) + '_norm.obj')
+        """
+
+        """DMP-Pos"""
+        mad_value = Loss.mad(o1_mesh, gt_mesh)
+        min_mad = min(mad_value, min_mad)
+        print("mad_value: ", mad_value, "min_mad: ", min_mad)
+        writer.add_scalar("MAD", mad_value, epoch)
+        Mesh.save(o1_mesh, "datasets/" + mesh_name + "/output/" + str(epoch) + "_pos.obj")

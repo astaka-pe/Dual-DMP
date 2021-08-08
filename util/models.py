@@ -19,16 +19,17 @@ class Dataset:
         self.edge_index = data['edge_index']
 
 class Mesh:
-    def __init__(self, path):
+    def __init__(self, path, build_mat=False):
         self.path = path
         self.vs, self.faces = self.fill_from_file(path)
         self.fn, self.fa = self.compute_face_normals()
         self.device = 'cpu'
         self.build_gemm() #self.edges, self.ve
         self.vn = self.compute_vert_normals()
-        self.build_uni_lap()
-        self.build_vf()
-        self.build_mesh_lap()
+        if build_mat:
+            self.build_uni_lap()
+            self.build_vf()
+            self.build_mesh_lap()
 
     def fill_from_file(self, path):
         vs, faces = [], []
@@ -254,6 +255,26 @@ class Mesh:
         Minv = torch.sparse.FloatTensor(M_ind, M_val, torch.Size([len(vs), len(vs)]))
         C = torch.sparse.mm(Minv, C.to_dense()).to_sparse()
         self.mesh_lap = C
+    
+    def save(self, filename):
+        assert len(self.vs) > 0
+        vertices = np.array(self.vs, dtype=np.float32).flatten()
+        indices = np.array(self.faces, dtype=np.uint32).flatten()
+
+        with open(filename, 'w') as fp:
+            # Write positions
+            for i in range(0, vertices.size, 3):
+                x = vertices[i + 0]
+                y = vertices[i + 1]
+                z = vertices[i + 2]
+                fp.write('v {0:.8f} {1:.8f} {2:.8f}\n'.format(x, y, z))
+
+            # Write indices
+            for i in range(0, len(indices), 3):
+                i0 = indices[i + 0] + 1
+                i1 = indices[i + 1] + 1
+                i2 = indices[i + 2] + 1
+                fp.write('f {0} {1} {2}\n'.format(i0, i1, i2))
 
 """for poisson mesh edit"""
 def build_div(n_mesh, vn):
