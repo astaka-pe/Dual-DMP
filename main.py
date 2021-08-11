@@ -22,12 +22,13 @@ parser.add_argument('--lr', type=float, default=0.01)
 parser.add_argument('--iter', type=int, default=5000)
 parser.add_argument('--skip', type=bool, default=False)
 parser.add_argument('--lap', type=float, default=1.4)
+parser.add_argument('--gpu', type=int, default=0)
 FLAGS = parser.parse_args()
 
 for k, v in vars(FLAGS).items():
     print('{:10s}: {}'.format(k, v))
 
-device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:' + str(FLAGS.gpu) if torch.cuda.is_available() else 'cpu')
 
 file_path = FLAGS.input
 gt_file = glob.glob(file_path + '/*_gt.obj')[0]
@@ -60,8 +61,8 @@ data = Data(z1=z1, z2=z2, x_pos=x_pos, x_norm=x_norm, edge_index=edge_index)
 dataset = Dataset(data)
 
 # create model instance
-posnet = PosNet().to(device)
-normnet = NormalNet().to(device)
+posnet = PosNet(device).to(device)
+normnet = NormalNet(device).to(device)
 posnet.train()
 normnet.train()
 
@@ -71,6 +72,7 @@ log_dir = "./logs/" + mesh_name + dt_now.isoformat()
 writer = SummaryWriter(log_dir=log_dir)
 log_file = "datasets/" + mesh_name + "/condition.json"
 condition = {"n": n_file, "s": s_file, "gt": gt_file, "iter": FLAGS.iter, "skip": FLAGS.skip, "lr": FLAGS.lr}
+os.makedirs("datasets/" + mesh_name + "/output", exist_ok=True)
 
 with open(log_file, mode="w") as f:
     l = json.dumps(condition, indent=2)
@@ -98,11 +100,11 @@ for epoch in range(1, FLAGS.iter+1):
 
     norm = normnet(dataset)
     loss_norm1 = Loss.mse_loss(norm, torch.tensor(n_mesh.vn, dtype=float).to(device))
-    loss_norm2 = 2.0 * Loss.mesh_laplacian_loss(norm, n_mesh.ve, n_mesh.edges)
+    loss_norm2 = 4.0 * Loss.mesh_laplacian_loss(norm, n_mesh.ve, n_mesh.edges)
 
     o1_mesh.vs = pos.to('cpu').detach().numpy().copy()
     o1_mesh.vn = norm2 = Mesh.compute_vert_normals(o1_mesh)
-    loss_pos3 = Loss.mse_loss(norm, torch.tensor(norm2, dtype=float).to(device))
+    loss_pos3 = 0.1 * Loss.mse_loss(norm, torch.tensor(norm2, dtype=float).to(device))
     
     loss_pos = loss_pos1 + loss_pos2 + loss_pos3
     loss_norm = loss_norm1 + loss_norm2

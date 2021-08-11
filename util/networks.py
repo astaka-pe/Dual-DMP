@@ -6,9 +6,9 @@ from torch_scatter import scatter_max
 from sklearn.preprocessing import normalize
 
 class PosNet(nn.Module):
-    def __init__(self):
+    def __init__(self, device):
         super(PosNet, self).__init__()
-        self.device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+        self.device = device
         
         h = [16, 32, 64, 128, 256, 256, 512, 512, 256, 256, 128, 64, 32, 16, 3]
 
@@ -67,9 +67,9 @@ class PosNet(nn.Module):
         return x_pos + dx
 
 class NormalNet(nn.Module):
-    def __init__(self):
+    def __init__(self, device):
         super(NormalNet, self).__init__()
-        self.device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+        self.device = device
         
         h = [16, 32, 64, 128, 256, 256, 512, 512, 256, 256, 128, 64, 32, 16, 3]
 
