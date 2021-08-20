@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from functools import reduce
+from collections import Counter
 import scipy as sp
 from sklearn.preprocessing import normalize
 
@@ -17,18 +18,19 @@ class Dataset:
         self.x_pos = data['x_pos']
         self.x_norm = data['x_norm']
         self.edge_index = data['edge_index']
+        self.face_index = data['face_index']
 
 class Mesh:
     def __init__(self, path, build_mat=False):
         self.path = path
         self.vs, self.faces = self.fill_from_file(path)
-        self.fn, self.fa = self.compute_face_normals()
+        self.compute_face_normals()
         self.device = 'cpu'
         self.build_gemm() #self.edges, self.ve
-        self.vn = self.compute_vert_normals()
+        self.compute_vert_normals()
+        self.build_vf()
         if build_mat:
             self.build_uni_lap()
-            self.build_vf()
             self.build_mesh_lap()
 
     def fill_from_file(self, path):
@@ -113,12 +115,11 @@ class Mesh:
         self.edge2key = edge2key
 
     def compute_face_normals(self):
-        face_normals = np.cross(self.vs[self.faces[:, 1]] - self.vs[self.faces[:, 0]], self.vs[self.faces[:, 2]] - self.vs[self.faces[:, 1]])
+        face_normals = np.cross(self.vs[self.faces[:, 1]] - self.vs[self.faces[:, 0]], self.vs[self.faces[:, 2]] - self.vs[self.faces[:, 0]])
         norm = np.sqrt(np.sum(np.square(face_normals), 1))
         face_areas = 0.5 * np.sqrt((face_normals**2).sum(axis=1))
         face_normals /= np.tile(norm, (3, 1)).T
-
-        return face_normals, face_areas
+        self.fn, self.fa = face_normals, face_areas
 
     def compute_vert_normals(self):
         vert_normals = np.zeros((3, len(self.vs)))
@@ -133,8 +134,7 @@ class Mesh:
         f2v_mat = sp.sparse.csr_matrix((mat_vals, (mat_rows, mat_cols)), shape=(nv, nf))
         vert_normals = sp.sparse.csr_matrix.dot(f2v_mat, face_normals)
         vert_normals = normalize(vert_normals, norm='l2', axis=1)
-
-        return vert_normals
+        self.vn = vert_normals
     
     def build_uni_lap(self):
         """compute uniform laplacian matrix"""
@@ -181,6 +181,27 @@ class Mesh:
             vf[f[1]].add(i)
             vf[f[2]].add(i)
         self.vf = vf
+
+        f2f = [[] for _ in range(len(self.faces))]
+        f_edges = np.array([[i] * 3 for i in range(len(self.faces))])
+        for i, f in enumerate(self.faces):
+            all_neig = list(vf[f[0]]) + list(vf[f[1]]) + list(vf[f[2]])
+            neig_f, _ = zip(*Counter(all_neig).most_common(4)[1:])
+            f2f[i] = list(neig_f)
+
+        self.f2f = np.array(f2f)
+        
+        self.f_edges = np.concatenate((self.f2f.reshape(1, -1), f_edges.reshape(1, -1)), 0)
+        mat_inds = torch.from_numpy(self.f_edges).long()
+        mat_vals = torch.ones(mat_inds.shape[1]).float() * -1.0
+        mat_inds_ident = torch.arange(len(self.faces)).repeat(2).reshape(2, -1)
+        mat_vals_ident = torch.ones(len(self.faces)).float() * 3.0
+        mat_inds = torch.cat([mat_inds, mat_inds_ident], dim=1)
+        mat_vals = torch.cat([mat_vals, mat_vals_ident], dim=0)
+
+        self.f2f_mat = torch.sparse.FloatTensor(mat_inds, mat_vals, size=torch.Size([len(self.faces), len(self.faces)]))
+        #self.f2f_mat /= 3.0
+        self.f2f_mat = torch.sparse.mm(self.f2f_mat, self.f2f_mat.to_dense()).to_sparse() / 12.0
     
     def build_mesh_lap(self):
         """compute mesh laplacian matrix"""
@@ -195,6 +216,7 @@ class Mesh:
             e0 = min(e)
             e1 = max(e)
             e_dict[(e0, e1)] = []
+        """
         for v in range(len(vs)):
             n_f = vf[v]
             for f in n_f:
@@ -216,13 +238,32 @@ class Mesh:
                 cot2 = c2 / np.sqrt(1 - c2 ** 2)
                 keys1 = (min(n_v[0], n_v[1]), max(n_v[0], n_v[1]))
                 keys2 = (min(n_v[0], n_v[2]), max(n_v[0], n_v[2]))
-                if len(e_dict[keys1]) < 2:
-                    e_dict[keys1].append(cot2)
-                if len(e_dict[keys2]) < 2:
-                    e_dict[keys2].append(cot1)
+                e_dict[keys1].append(cot2)
+                e_dict[keys2].append(cot1)
+
+        for e in e_dict:
+            e_dict[e] = -0.25 * (e_dict[e][0] + e_dict[e][1] + e_dict[e][2] + e_dict[e][3])
+        """
+        for f in faces:
+            s = vs[f[1]] - vs[f[0]]
+            t = vs[f[2]] - vs[f[1]]
+            u = vs[f[0]] - vs[f[2]]
+            cos_0 = np.inner(s, -u) / (np.linalg.norm(s) * np.linalg.norm(u))
+            cos_1 = np.inner(t, -s) / (np.linalg.norm(t) * np.linalg.norm(s)) 
+            cos_2 = np.inner(u, -t) / (np.linalg.norm(u) * np.linalg.norm(t))
+            cot_0 = cos_0 / (np.sqrt(1 - cos_0 ** 2) + 1e-12)
+            cot_1 = cos_1 / (np.sqrt(1 - cos_1 ** 2) + 1e-12)
+            cot_2 = cos_2 / (np.sqrt(1 - cos_2 ** 2) + 1e-12)
+            key_0 = (min(f[1], f[2]), max(f[1], f[2]))
+            key_1 = (min(f[2], f[0]), max(f[2], f[0]))
+            key_2 = (min(f[0], f[1]), max(f[0], f[1]))
+            e_dict[key_0].append(cot_0)
+            e_dict[key_1].append(cot_1)
+            e_dict[key_2].append(cot_2)
+        
         for e in e_dict:
             e_dict[e] = -0.5 * (e_dict[e][0] + e_dict[e][1])
-        
+
         C_ind = [[], []]
         C_val = []
         ident = [0] * len(vs)
@@ -243,6 +284,7 @@ class Mesh:
         C_val = torch.FloatTensor(C_val)
         # cotangent matrix
         C = torch.sparse.FloatTensor(C_ind, C_val, torch.Size([len(vs), len(vs)]))
+        self.cot_mat = C
 
         M_ind = torch.stack([torch.arange(len(vs)), torch.arange(len(vs))], dim=0).long()
         M_val = []
@@ -284,11 +326,12 @@ def build_div(n_mesh, vn):
     fa = n_mesh.fa
     vf = n_mesh.vf
     grad_b = [[] for _ in range(len(vs))]
-    for i, v in enumerate(vf):
-        for t in v:
-            f = faces[t]
-            f_n = fn[t]
-            a = fa[t]
+    for i, v in enumerate(vf): # vf: triangle indices around vertex i
+        for t in v: # for each triangle index t
+            f = faces[t] # vertex indices in t
+            f_n = fn[t]  # face normal of t
+            a = fa[t]    # face area of t
+            """sort vertex indices"""
             if f[1] == i:
                 f = [f[1], f[2], f[0]]
             elif f[2] == i:
@@ -344,21 +387,23 @@ def poisson_mesh_edit(n_mesh, div):
 
     return new_vs
 
-def cg(n_mesh, div, iter=50):
+def cg(n_mesh, div, iter=50, a=100):
     # preparation
-    C = n_mesh.mesh_lap.to_dense()
+    #C = n_mesh.mesh_lap.to_dense()
     #C = n_mesh.lapmat.to_dense()
+    C = n_mesh.cot_mat.to_dense()
     B = div
     # boundary condition
-    C_add = torch.eye(len(n_mesh.vs))
+    C_add = torch.eye(len(n_mesh.vs)) * a
     C = torch.cat([C, C_add], dim=0)
     Ct = C.T.to_sparse()
     C = C.to_sparse()
-    B_add = torch.from_numpy(n_mesh.vs)
+    B_add = torch.from_numpy(n_mesh.vs) * a
     B = torch.cat([torch.from_numpy(B), B_add], dim=0)
     B = torch.sparse.mm(Ct.float(), B.float())
     A = torch.sparse.mm(Ct, C.to_dense())
     # solve Ax=b by cg
+    """
     x_0 = torch.from_numpy(n_mesh.vs).float()
     r_0 = B - torch.matmul(A, x_0)
     p_0 = r_0
@@ -375,5 +420,35 @@ def cg(n_mesh, div, iter=50):
         x_0 = x_1
         r_0 = r_1
         p_0 = p_1
-    
     return x_1
+    """
+    A = A.detach().numpy().copy()
+    x_0 = torch.from_numpy(n_mesh.vs).float()
+    x_1 = []
+    for i in range(3):
+        x_1.append(sp.sparse.linalg.cg(A, B[:,i], x0=x_0[:,i], maxiter=iter)[0].tolist())
+    return np.array(x_1).T
+    
+def compute_fn(vs, faces):
+    face_normals = torch.cross(vs[faces[:, 1]] - vs[faces[:, 0]], vs[faces[:, 2]] - vs[faces[:, 0]])
+    norm = torch.sqrt(torch.sum(face_normals**2, dim=1))
+    face_normals = face_normals / norm.repeat(3, 1).T
+    return face_normals
+
+def compute_vn(vs, fn, faces):
+    vert_normals = torch.zeros((3, len(vs)))
+    face_normals = fn
+    faces = torch.from_numpy(faces).long().to(vs.device)
+
+    nv = len(vs)
+    nf = len(faces)
+    mat_rows = torch.reshape(faces, (-1,)).to(vs.device)
+    mat_cols = torch.tensor([[i] * 3 for i in range(nf)]).reshape(-1).to(vs.device)
+    mat_vals = torch.ones(len(mat_rows)).to(vs.device)
+    f2v_mat = torch.sparse.FloatTensor(torch.stack([mat_rows, mat_cols], dim=0),
+                                        mat_vals,
+                                        size=torch.Size([nv, nf]))
+    vert_normals = torch.sparse.mm(f2v_mat, face_normals)
+    norm = torch.sqrt(torch.sum(vert_normals**2, dim=1))                    
+    vert_normals = vert_normals / norm.repeat(3, 1).T
+    return vert_normals

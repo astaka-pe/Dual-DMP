@@ -47,7 +47,7 @@ class PosNet(nn.Module):
     def forward(self, data):
 
         z1, x_pos, edge_index = data.z1.to(self.device), data.x_pos.to(self.device), data.edge_index.to(self.device)
-        
+        n1 = torch.randn(x_pos.shape[0], x_pos.shape[1]).to(self.device) * 1e-5
         dx = self.l_relu(self.bn1(self.conv1(z1, edge_index)))
         dx = self.l_relu(self.bn2(self.conv2(dx, edge_index)))
         dx = self.l_relu(self.bn3(self.conv3(dx, edge_index)))
@@ -64,7 +64,7 @@ class PosNet(nn.Module):
         dx = self.l_relu(self.linear1(dx))
         dx = self.linear2(dx)
         
-        return x_pos + dx
+        return x_pos + n1 + dx
 
 class NormalNet(nn.Module):
     def __init__(self, device):
@@ -107,8 +107,8 @@ class NormalNet(nn.Module):
 
     def forward(self, data):
 
-        z2, x_pos, edge_index = data.z2.to(self.device), data.x_pos.to(self.device), data.edge_index.to(self.device)
-        
+        z2, x_pos, edge_index = data.z2.to(self.device), data.x_pos.to(self.device), data.face_index.to(self.device)
+        #n2 = torch.randn(z2.shape[0], z2.shape[1]).to(self.device) * 0.01
         dx = self.l_relu(self.bn1(self.conv1(z2, edge_index)))
         dx = self.l_relu(self.bn2(self.conv2(dx, edge_index)))
         dx = self.l_relu(self.bn3(self.conv3(dx, edge_index)))
