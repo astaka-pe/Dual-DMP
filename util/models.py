@@ -25,9 +25,11 @@ class Mesh:
         self.path = path
         self.vs, self.faces = self.fill_from_file(path)
         self.compute_face_normals()
+        self.compute_face_center()
         self.device = 'cpu'
         self.build_gemm() #self.edges, self.ve
         self.compute_vert_normals()
+        self.compute_fn_sphere()
         self.build_vf()
         if build_mat:
             self.build_uni_lap()
@@ -136,6 +138,17 @@ class Mesh:
         vert_normals = normalize(vert_normals, norm='l2', axis=1)
         self.vn = vert_normals
     
+    def compute_face_center(self):
+        faces = self.faces
+        vs = self.vs
+        self.fc = np.sum(vs[faces], 1) / 3.0
+    
+    def compute_fn_sphere(self):
+        fn = self.fn
+        u = (np.arctan2(fn[:, 1], fn[:, 0]) + np.pi) / (2.0 * np.pi)
+        v = np.arctan2(np.sqrt(fn[:, 0]**2 + fn[:, 1]**2), fn[:, 2]) / np.pi
+        self.fn_uv = np.stack([u, v]).T
+    
     def build_uni_lap(self):
         """compute uniform laplacian matrix"""
         vs = torch.tensor(self.vs.T, dtype=torch.float)
@@ -181,28 +194,35 @@ class Mesh:
             vf[f[1]].add(i)
             vf[f[2]].add(i)
         self.vf = vf
-
+        
         f2f = [[] for _ in range(len(self.faces))]
         f_edges = np.array([[i] * 3 for i in range(len(self.faces))])
+        #f_edges_ext = [[] for _ in range(2)]
         for i, f in enumerate(self.faces):
             all_neig = list(vf[f[0]]) + list(vf[f[1]]) + list(vf[f[2]])
             neig_f, _ = zip(*Counter(all_neig).most_common(4)[1:])
+            #neig_f_ext, _ = zip(*Counter(all_neig).most_common()[1:])
             f2f[i] = list(neig_f)
+            #f_edges_ext[0] = f_edges_ext[0] + list(neig_f_ext)
+            #f_edges_ext[1] = f_edges_ext[1] + [i] * len(neig_f_ext)
 
         self.f2f = np.array(f2f)
+        #f_edges_ext = np.array(f_edges_ext)
         
         self.f_edges = np.concatenate((self.f2f.reshape(1, -1), f_edges.reshape(1, -1)), 0)
         mat_inds = torch.from_numpy(self.f_edges).long()
-        mat_vals = torch.ones(mat_inds.shape[1]).float() * -1.0
-        mat_inds_ident = torch.arange(len(self.faces)).repeat(2).reshape(2, -1)
-        mat_vals_ident = torch.ones(len(self.faces)).float() * 3.0
-        mat_inds = torch.cat([mat_inds, mat_inds_ident], dim=1)
-        mat_vals = torch.cat([mat_vals, mat_vals_ident], dim=0)
-
+        #mat_vals = torch.ones(mat_inds.shape[1]).float()
+        mat_vals = torch.from_numpy(self.fa[self.f_edges[0]]).float()
+        #mat_inds_ident = torch.arange(len(self.faces)).repeat(2).reshape(2, -1)
+        #mat_vals_ident = torch.ones(len(self.faces)).float() * 3.0
+        #mat_inds = torch.cat([mat_inds, mat_inds_ident], dim=1)
+        #mat_vals = torch.cat([mat_vals, mat_vals_ident], dim=0)
         self.f2f_mat = torch.sparse.FloatTensor(mat_inds, mat_vals, size=torch.Size([len(self.faces), len(self.faces)]))
-        #self.f2f_mat /= 3.0
-        self.f2f_mat = torch.sparse.mm(self.f2f_mat, self.f2f_mat.to_dense()).to_sparse() / 12.0
-    
+        
+        #mat_inds_ext = torch.from_numpy(f_edges_ext).long()
+        #mat_vals_ext = torch.from_numpy(self.fa[f_edges_ext[0]]).float()
+        #self.f2f_mat_ext = torch.sparse.FloatTensor(mat_inds_ext, mat_vals_ext, size=torch.Size([len(self.faces), len(self.faces)]))
+        
     def build_mesh_lap(self):
         """compute mesh laplacian matrix"""
         vs = self.vs
@@ -452,3 +472,12 @@ def compute_vn(vs, fn, faces):
     norm = torch.sqrt(torch.sum(vert_normals**2, dim=1))                    
     vert_normals = vert_normals / norm.repeat(3, 1).T
     return vert_normals
+
+def uv2xyz(uv):
+    u = 2.0 * np.pi * uv[:, 0] - np.pi
+    v = np.pi * uv[:, 1]
+    x = torch.sin(v) * torch.cos(u)
+    y = torch.sin(v) * torch.sin(u)
+    z = torch.cos(v)
+    xyz = torch.stack([x, y, z]).T
+    return xyz

@@ -11,7 +11,7 @@ import util.loss as Loss
 import util.models as Models
 from util.objmesh import ObjMesh
 from util.models import Dataset, Mesh
-from util.networks import PosNet, NormalNet
+from util.networks import PosNet, NormalNet, SphereNet
 
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.data import Data
@@ -66,6 +66,7 @@ dataset = Dataset(data)
 # create model instance
 posnet = PosNet(device).to(device)
 normnet = NormalNet(device).to(device)
+#normnet = SphereNet(device).to(device)
 posnet.train()
 normnet.train()
 
@@ -91,6 +92,7 @@ print("init_mad: ", init_mad, " init_vn_loss: ", float(init_vn_loss), " init_fn_
 
 optimizer_pos = torch.optim.Adam(posnet.parameters(), lr=FLAGS.lr)
 optimizer_norm = torch.optim.Adam(normnet.parameters(), lr=FLAGS.lr)
+l1loss = torch.nn.MSELoss()
 
 for epoch in range(1, FLAGS.iter+1):
     if FLAGS.ntype == "pos":
@@ -100,21 +102,13 @@ for epoch in range(1, FLAGS.iter+1):
         loss_pos1 = Loss.mse_loss(pos, torch.tensor(n_mesh.vs, dtype=float).to(device))
         loss_pos2 = FLAGS.lap * Loss.mesh_laplacian_loss(pos, n_mesh.ve, n_mesh.edges)
         o1_mesh.vs = pos.to('cpu').detach().numpy().copy()
-
-        norm = Models.compute_fn(pos, n_mesh.faces).float()
-        """test"""
-        Mesh.compute_face_normals(o1_mesh)
-        Mesh.compute_vert_normals(o1_mesh)
-        #loss_pos3 = Loss.norm_cos_loss(torch.tensor(gt_mesh.vn, dtype=float), torch.tensor(norm2, dtype=float))
-        loss_pos3 = Loss.norm_cos_loss(torch.tensor(gt_mesh.fn, dtype=float).to(device), norm)
-        #loss_pos3 = 10 * Loss.pos4norm(pos.to('cpu'), o1_mesh, torch.tensor(gt_mesh.fn, dtype=float))
-
+        fn2 = Models.compute_fn(pos, n_mesh.faces).float()
+        loss_pos3 = 0.0 * Loss.norm_cos_loss(fn2, torch.tensor(n_mesh.fn).float().to(device))
         loss_pos = loss_pos1 + loss_pos2 + loss_pos3
         loss_pos.backward()
         optimizer_pos.step()
         writer.add_scalar("pos1", loss_pos1, epoch)
         writer.add_scalar("pos2", loss_pos2, epoch)
-        writer.add_scalar("pos3", loss_pos3, epoch)
         writer.add_scalar("pos", loss_pos, epoch)
     
     elif FLAGS.ntype == "norm":
@@ -123,7 +117,25 @@ for epoch in range(1, FLAGS.iter+1):
         norm = normnet(dataset)
 
         loss_norm1 = Loss.norm_cos_loss(norm, torch.tensor(n_mesh.fn, dtype=float).to(device))
+        #loss_norm2 = 5.0 * Loss.fn_mean_filter_loss(norm, n_mesh.f2f_mat)
+        #loss_norm2 = 10.0 * Loss.fn_bilap_loss(norm, n_mesh.fc, n_mesh.f2f)
+        loss_norm2 = 0.2 * Loss.fn_bnf_loss(norm, n_mesh.fc, n_mesh.f2f)
+        loss_norm = loss_norm1 + loss_norm2
+        loss_norm.backward()
+        optimizer_norm.step()
+
+        writer.add_scalar("norm1", loss_norm1, epoch)
+        writer.add_scalar("norm2", loss_norm2, epoch)
+        writer.add_scalar("norm", loss_norm, epoch)
+
+    elif FLAGS.ntype == "sphere":
+        normnet.train()
+        optimizer_norm.zero_grad()
+        norm = normnet(dataset)
+
+        loss_norm1 = l1loss(norm, torch.tensor(n_mesh.fn_uv).float().to(device))
         loss_norm2 = 5.0 * Loss.fn_lap_loss(norm, n_mesh.f2f_mat)
+        #loss_norm2 = 10.0 * Loss.fn_bilap_loss(norm, n_mesh.fc, n_mesh.f2f)
         loss_norm = loss_norm1 + loss_norm2
         loss_norm.backward()
         optimizer_norm.step()
@@ -143,12 +155,8 @@ for epoch in range(1, FLAGS.iter+1):
         loss_pos2 = FLAGS.lap * Loss.mesh_laplacian_loss(pos, n_mesh.ve, n_mesh.edges)
 
         norm = normnet(dataset)
-        """ regress vn
-        loss_norm1 = Loss.norm_cos_loss(norm, torch.tensor(n_mesh.vn, dtype=float).to(device))
-        loss_norm2 = 5.0 * Loss.norm_laplacian_loss(norm, n_mesh.ve, n_mesh.edges)
-        """
         loss_norm1 = Loss.norm_cos_loss(norm, torch.tensor(n_mesh.fn, dtype=float).to(device))
-        loss_norm2 = 5.0 * Loss.fn_lap_loss(norm, n_mesh.f2f_mat)
+        loss_norm2 = 0.2 * Loss.fn_bnf_loss(norm, n_mesh.fc, n_mesh.f2f)
 
         fn2 = Models.compute_fn(pos, n_mesh.faces).float()
         loss_pos3 = Loss.norm_cos_loss(fn2, norm)
@@ -174,6 +182,8 @@ for epoch in range(1, FLAGS.iter+1):
             print('Epoch %d || Loss_P: %.4f' % (epoch, loss_pos.item()))
         elif FLAGS.ntype == "norm":
             print('Epoch %d || Loss_N: %.4f' % (epoch, loss_norm.item()))
+        elif FLAGS.ntype == "sphere":
+            print('Epoch %d || Loss_N: %.4f' % (epoch, loss_norm.item()))
         else:
             print('Epoch %d || Loss_P: %.4f | Loss_N: %.4f' % (epoch, loss_pos.item(), loss_norm.item()))
         
@@ -193,6 +203,14 @@ for epoch in range(1, FLAGS.iter+1):
             min_norm_loss = min(min_norm_loss, test_norm_loss)
             print("test_norm_loss: ", float(test_norm_loss), "min_norm_loss: ", float(min_norm_loss))
             writer.add_scalar("test_norm", test_norm_loss, epoch)
+
+        elif FLAGS.ntype == "sphere":
+            normal = Models.uv2xyz(norm)
+            test_norm_loss = Loss.mse_loss(normal, torch.tensor(gt_mesh.fn, dtype=float).to(device))
+            min_norm_loss = min(min_norm_loss, test_norm_loss)
+            print("test_norm_loss: ", float(test_norm_loss), "min_norm_loss: ", float(min_norm_loss))
+            writer.add_scalar("test_norm", test_norm_loss, epoch)
+
         else:
             o1_mesh.vs = pos.to('cpu').detach().numpy().copy()
             Mesh.compute_face_normals(o1_mesh)
@@ -202,7 +220,7 @@ for epoch in range(1, FLAGS.iter+1):
             min_mad = min(mad_value, min_mad)
             print("mad_value: ", mad_value, "min_mad: ", min_mad)
             writer.add_scalar("MAD", mad_value, epoch)
-            Mesh.save(o1_mesh, "datasets/" + mesh_name + "/output/" + str(epoch) + "_pos.obj")
+            Mesh.save(o1_mesh, "datasets/" + mesh_name + "/output/" + str(epoch) + "_hybrid.obj")
             
             """DMP-Norm"""
             test_norm_loss = Loss.mse_loss(norm, torch.tensor(gt_mesh.fn, dtype=float).to(device))

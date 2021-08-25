@@ -13,17 +13,15 @@ def mae_loss(pred_pos, real_pos, verts_mask=None):
         mae_pos = torch.sum(diff_pos.T * verts_mask) / (torch.sum(verts_mask) + 1.0e-12)
     return mae_pos
 
-def mse_loss(pred_pos, real_pos, verts_mask=None):
+def mse_loss(pred_pos, real_pos):
     """mean-square error for vertex positions"""
     diff_pos = torch.abs(real_pos - pred_pos)
     diff_pos = diff_pos ** 2
     diff_pos = torch.sum(diff_pos.squeeze(), dim=1)
-    diff_pos = torch.sqrt(diff_pos)
-    if verts_mask == None:
-        mse_pos = torch.sum(diff_pos) / len(diff_pos)
-    else:
-        mse_pos = torch.sum(diff_pos.T * verts_mask) / (torch.sum(verts_mask) + 1.0e-12)
-    return mse_pos
+    mse_pos = torch.sum(diff_pos) / len(diff_pos)
+    rmse_pos = torch.sqrt(mse_pos)
+
+    return rmse_pos
 
 def mae_loss_edge_lengths(pred_pos, real_pos, edges):
     """mean-absolute error for edge lengths"""
@@ -140,6 +138,81 @@ def fn_lap_loss(fn: torch.Tensor, f2f_mat: torch.sparse.Tensor) -> torch.Tensor:
     fn_lap_loss = torch.sum(dif_cos, dim=0) / len(dif_cos)
     """
     return fn_lap_loss
+
+def fn_mean_filter_loss(fn: torch.Tensor, f2f_mat: torch.sparse.Tensor) -> torch.Tensor:
+    f2f_mat = f2f_mat.to(fn.device)
+    neig_fn = fn
+    for i in range(10):
+        neig_fn = torch.sparse.mm(f2f_mat, neig_fn)
+        neig_fn = neig_fn / torch.norm(neig_fn, dim=1, keepdim=True)
+    fn_cos = 1.0 - torch.sum(neig_fn * fn, dim=1)
+
+    fn_mean_filter_loss = torch.sum(fn_cos, dim=0) / len(fn_cos)
+    
+    return fn_mean_filter_loss
+
+def sphere_lap_loss_with_fa(uv: torch.Tensor, f2f_ext: torch.sparse.Tensor) -> torch.Tensor:
+    neig_uv = torch.sparse.mm(f2f_ext.to(uv.device), uv.float())
+    dif_uv = uv - neig_uv
+    dif_uv = torch.norm(dif_uv, dim=1)
+    fn_lap_loss = torch.sum(dif_uv, dim=0) / len(dif_uv)
+    
+    return fn_lap_loss
+
+def fn_bnf_loss(fn: torch.Tensor, fc: np.ndarray, f2f: np.ndarray) -> torch.Tensor:    
+    fc = torch.from_numpy(fc).float().to(fn.device)
+    f2f = torch.from_numpy(f2f).long().to(fn.device)
+    
+    neig_fc = fc[f2f]
+    fc0_tile = fc.repeat(1, 3).reshape(-1, 3, 3)
+    fc_dist = torch.norm(neig_fc - fc0_tile, dim=2)
+    sigma_c = torch.sum(fc_dist) / (fc_dist.shape[0] * fc_dist.shape[1])
+
+    new_fn = fn
+    for i in range(20):
+        neig_fn = new_fn[f2f]
+        fn0_tile = new_fn.repeat(1, 3).reshape(-1, 3, 3)
+        fn_dist = torch.norm(neig_fn - fn0_tile, dim=2)
+        sigma_s = 0.3
+
+        wc = torch.exp(-1.0 * (fc_dist ** 2) / (2 * (sigma_c ** 2) + 1.0e-12))
+        ws = torch.exp(-1.0 * (fn_dist ** 2) / (2 * (sigma_s ** 2) + 1.0e-12))
+        W = torch.stack([wc*ws, wc*ws, wc*ws], dim=2)
+
+        new_fn = torch.sum(W * neig_fn, dim=1)
+        new_fn = new_fn / torch.norm(new_fn, dim=1, keepdim=True)
+
+    dif_fn = new_fn - fn
+    dif_fn = dif_fn ** 2
+    loss = torch.sum(dif_fn, dim=1)
+    loss = torch.sum(loss, dim=0) / fn.shape[0]
+
+    return loss
+
+def fn_bilap_loss(fn: torch.Tensor, fc: np.ndarray, f2f: np.ndarray) -> torch.Tensor:
+    fc = torch.from_numpy(fc).float().to(fn.device)
+    f2f = torch.from_numpy(f2f).long().to(fn.device)
+    
+    neig_fc = fc[f2f]
+    fc0_tile = fc.repeat(1, 3).reshape(-1, 3, 3)
+    fc_dist = torch.norm(neig_fc - fc0_tile, dim=2)
+    
+    neig_fn = fn[f2f]
+    fn0_tile = fn.repeat(1, 3).reshape(-1, 3, 3)
+    fn_dist = 1.0 - torch.sum(neig_fn * fn0_tile, dim=2)
+   
+    sigma_c, _ = torch.max(fc_dist, dim=1)
+    sigma_c = sigma_c.reshape(-1, 1)
+    sigma_s = torch.std(fn_dist, dim=1).reshape(-1, 1)
+
+    wc = torch.exp(-1.0 * (fc_dist ** 2) / (2 * (sigma_c ** 2) + 1.0e-12))
+    ws = torch.exp(-1.0 * (fn_dist ** 2) / (2 * (sigma_s ** 2) + 1.0e-12))
+
+    loss = torch.sum(wc * ws * fn_dist, dim=1) / (torch.sum(wc * ws, dim=1) + 1.0e-12)
+    loss = torch.sum(loss) / len(loss)
+    
+    return loss
+
 
 def mad(mesh1, mesh2):
     Mesh.compute_face_normals(mesh1)
