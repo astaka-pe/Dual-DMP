@@ -58,8 +58,7 @@ def create_dataset(file_path: str) -> Tuple[dict, Dataset]:
     mesh_dic["mesh_name"] = mesh_name
     mesh_dic["gt_mesh"] = gt_mesh
     mesh_dic["n_mesh"] = n_mesh
-    mesh_dic["o1_mesh"] = n_mesh
-    mesh_dic["o2_mesh"] = n_mesh
+    mesh_dic["o1_mesh"] = o1_mesh
     mesh_dic["s_mesh"] = s_mesh
 
     return mesh_dic, dataset

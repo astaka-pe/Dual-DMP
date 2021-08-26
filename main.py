@@ -50,6 +50,7 @@ log_dir = "./logs/" + mesh_name + dt_now.isoformat()
 writer = SummaryWriter(log_dir=log_dir)
 log_file = log_dir + "/condition.json"
 condition = {"PosNet": str(posnet).split("\n"), "NormNet": str(normnet).split("\n"), "optimizer_pos": str(optimizer_pos).split("\n"), "optimizer_norm": str(optimizer_norm).split("\n")}
+
 with open(log_file, mode="w") as f:
     l = json.dumps(condition, indent=2)
     f.write(l)
