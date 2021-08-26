@@ -123,7 +123,7 @@ class NormalNet(nn.Module):
         dx = self.l_relu(self.bn12(self.conv12(dx, edge_index)))
         
         dx = self.l_relu(self.linear1(dx))
-        dx = self.linear2(dx)
+        dx = torch.tanh(self.linear2(dx))
         
         dx_norm = torch.reciprocal(torch.norm(dx, dim=1, keepdim=True).expand(-1, 3))
         x = torch.mul(dx, dx_norm)

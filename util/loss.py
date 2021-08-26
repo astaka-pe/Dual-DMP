@@ -1,60 +1,70 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
-from util.models import Mesh
+from util.mesh import Mesh
+from typing import Union
 
-def mae_loss(pred_pos, real_pos, verts_mask=None):
-    """mean-absolute error for vertex positions"""
-    diff_pos = torch.abs(real_pos - pred_pos)
-    diff_pos = torch.sum(diff_pos.squeeze(), dim=1)
-    if verts_mask == None:
-        mae_pos = torch.sum(diff_pos) / len(diff_pos)
-    else:
-        mae_pos = torch.sum(diff_pos.T * verts_mask) / (torch.sum(verts_mask) + 1.0e-12)
-    return mae_pos
-
-def mse_loss(pred_pos, real_pos):
-    """mean-square error for vertex positions"""
+def rmse_loss(pred_pos: Union[torch.Tensor, np.ndarray], real_pos: np.ndarray) -> torch.Tensor:
+    """ root mean-square error for vertex positions """
+    if type(pred_pos) == np.ndarray:
+        pred_pos = torch.from_numpy(pred_pos)
+    real_pos = torch.from_numpy(real_pos).to(pred_pos.device)
     diff_pos = torch.abs(real_pos - pred_pos)
     diff_pos = diff_pos ** 2
     diff_pos = torch.sum(diff_pos.squeeze(), dim=1)
     mse_pos = torch.sum(diff_pos) / len(diff_pos)
-    rmse_pos = torch.sqrt(mse_pos)
+    rmse_pos = torch.sqrt(mse_pos + 1.0e-6)
 
     return rmse_pos
 
-def mae_loss_edge_lengths(pred_pos, real_pos, edges):
-    """mean-absolute error for edge lengths"""
-    pred_edge_pos = pred_pos[edges,:].clone().detach()
-    real_edge_pos = real_pos[edges,:].clone().detach()
+def norm_cos_loss(pred_norm: Union[torch.Tensor, np.ndarray], real_norm: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+    """ cosine distance for (vertex, face) normal """
+    if type(pred_norm) == np.ndarray:
+        pred_norm = torch.from_numpy(pred_norm)
+    if type(real_norm) == np.ndarray:
+        real_norm = torch.from_numpy(real_norm).to(pred_norm.device)
+    lap_cos = 1.0 - torch.sum(torch.mul(pred_norm, real_norm), dim=1)
+    lap_loss = torch.sum(lap_cos, dim=0) / len(lap_cos)
+    return lap_loss
 
-    pred_edge_lens = torch.abs(pred_edge_pos[:,0,:]-pred_edge_pos[:,1,:])
-    real_edge_lens = torch.abs(real_edge_pos[:,0,:]-real_edge_pos[:,1,:])
-
-    pred_edge_lens = torch.sum(pred_edge_lens, dim=1)
-    real_edge_lens = torch.sum(real_edge_lens, dim=1)
+def fn_bnf_loss(fn: torch.Tensor, mesh: Mesh) -> torch.Tensor:
+    """ bilateral loss for face normal """
+    fc = torch.from_numpy(mesh.fc).float().to(fn.device)
+    fa = torch.from_numpy(mesh.fa).float().to(fn.device)
+    f2f = torch.from_numpy(mesh.f2f).long().to(fn.device)
     
-    diff_edge_lens = torch.abs(real_edge_lens - pred_edge_lens)
-    mae_edge_lens = torch.mean(diff_edge_lens)
+    neig_fc = fc[f2f]
+    neig_fa = fa[f2f]
+    fc0_tile = fc.repeat(1, 3).reshape(-1, 3, 3)
+    fc_dist = torch.norm(neig_fc - fc0_tile + 1.0e-6, dim=2)
+    sigma_c = torch.sum(fc_dist) / (fc_dist.shape[0] * fc_dist.shape[1])
 
-    return mae_edge_lens
+    new_fn = fn
+    for i in range(5):
+        neig_fn = new_fn[f2f]
+        fn0_tile = new_fn.repeat(1, 3).reshape(-1, 3, 3)
+        fn_dist = torch.norm(neig_fn - fn0_tile + 1.0e-6, dim=2)
+        sigma_s = 0.3
+        wc = torch.exp(-1.0 * (fc_dist ** 2) / (2 * (sigma_c ** 2) + 1.0e-6))
+        ws = torch.exp(-1.0 * (fn_dist ** 2) / (2 * (sigma_s ** 2) + 1.0e-6))
+        
+        W = torch.stack([wc*ws*neig_fa, wc*ws*neig_fa, wc*ws*neig_fa], dim=2)
 
-def var_edge_lengths(pred_pos, edges):
-    """variance of edge lengths"""
-    pred_edge_pos = pred_pos[edges,:].clone().detach()
+        new_fn = torch.sum(W * neig_fn, dim=1)
+        new_fn = new_fn / (torch.norm(new_fn + 1.0e-6, dim=1, keepdim=True) + 1.0e-6)
 
-    pred_edge_lens = torch.abs(pred_edge_pos[:,0,:]-pred_edge_pos[:,1,:])
+    dif_fn = new_fn - fn
+    dif_fn = dif_fn ** 2
+    loss = torch.sum(dif_fn, dim=1)
+    loss = torch.sum(loss, dim=0) / fn.shape[0]
+    loss = torch.sqrt(loss + 1.0e-6)
 
-    pred_edge_lens = torch.sum(pred_edge_lens, dim=1)
-    
-    mean_edge_len = torch.mean(pred_edge_lens, dim=0, keepdim=True)
-    var_edge_len = torch.pow(pred_edge_lens - mean_edge_len, 2.0)
-    var_edge_len = torch.mean(var_edge_len)
+    return loss
 
-    return var_edge_len
-
-def mesh_laplacian_loss(pred_pos, ve, edges):
-    """simple laplacian for output meshes"""
+def mesh_laplacian_loss(pred_pos: torch.Tensor, mesh: Mesh) -> torch.Tensor:
+    """ simple laplacian for output meshes """
+    ve = mesh.ve
+    edges = mesh.edges
     pred_pos = pred_pos.T
     sub_mesh_vv = [edges[v_e, :].reshape(-1) for v_e in ve]
     sub_mesh_vv = [set(vv.tolist()).difference(set([i])) for i, vv in enumerate(sub_mesh_vv)]
@@ -87,10 +97,60 @@ def mesh_laplacian_loss(pred_pos, ve, edges):
 
     return lap_loss
 
-def norm_cos_loss(pred_norm, real_norm, verts_mask=None):
-    lap_cos = 1.0 - torch.sum(torch.mul(pred_norm, real_norm), dim=1)
-    lap_loss = torch.sum(lap_cos, dim=0) / len(lap_cos)
-    return lap_loss
+def mad(norm1: Union[np.ndarray, torch.Tensor], norm2: Union[np.ndarray, torch.Tensor]) -> np.ndarray:
+    """ mean angular distance for (face, vertex) normals """
+    if type(norm1) == torch.Tensor:
+        norm1 = norm1.to("cpu").detach().numpy().copy()
+    if type(norm2) == torch.Tensor:
+        norm2 = norm2.to("cpu").detach().numpy().copy()
+
+    inner = [np.inner(norm1[i], norm2[i]) for i in range(norm1.shape[0])]
+    sad = np.rad2deg(np.arccos(np.clip(inner, -1.0, 1.0)))
+    mad = np.sum(sad) / len(sad)
+
+    return mad
+
+""" --- We don't use the loss functions below --- """
+
+def mae_loss(pred_pos: Union[torch.Tensor, np.ndarray], real_pos: np.ndarray) -> torch.Tensor:
+    """mean-absolute error for vertex positions"""
+    if type(pred_pos) == np.ndarray:
+        pred_pos = torch.from_numpy(pred_pos)
+    diff_pos = torch.abs(real_pos - pred_pos)
+    diff_pos = torch.sum(diff_pos.squeeze(), dim=1)
+    mae_pos = torch.sum(diff_pos) / len(diff_pos)
+
+    return mae_pos
+
+def mae_loss_edge_lengths(pred_pos, real_pos, edges):
+    """mean-absolute error for edge lengths"""
+    pred_edge_pos = pred_pos[edges,:].clone().detach()
+    real_edge_pos = real_pos[edges,:].clone().detach()
+
+    pred_edge_lens = torch.abs(pred_edge_pos[:,0,:]-pred_edge_pos[:,1,:])
+    real_edge_lens = torch.abs(real_edge_pos[:,0,:]-real_edge_pos[:,1,:])
+
+    pred_edge_lens = torch.sum(pred_edge_lens, dim=1)
+    real_edge_lens = torch.sum(real_edge_lens, dim=1)
+    
+    diff_edge_lens = torch.abs(real_edge_lens - pred_edge_lens)
+    mae_edge_lens = torch.mean(diff_edge_lens)
+
+    return mae_edge_lens
+
+def var_edge_lengths(pred_pos, edges):
+    """variance of edge lengths"""
+    pred_edge_pos = pred_pos[edges,:].clone().detach()
+
+    pred_edge_lens = torch.abs(pred_edge_pos[:,0,:]-pred_edge_pos[:,1,:])
+
+    pred_edge_lens = torch.sum(pred_edge_lens, dim=1)
+    
+    mean_edge_len = torch.mean(pred_edge_lens, dim=0, keepdim=True)
+    var_edge_len = torch.pow(pred_edge_lens - mean_edge_len, 2.0)
+    var_edge_len = torch.mean(var_edge_len)
+
+    return var_edge_len
 
 def norm_laplacian_loss(pred_pos, ve, edges):
     """simple laplacian for output meshes"""
@@ -159,36 +219,6 @@ def sphere_lap_loss_with_fa(uv: torch.Tensor, f2f_ext: torch.sparse.Tensor) -> t
     
     return fn_lap_loss
 
-def fn_bnf_loss(fn: torch.Tensor, fc: np.ndarray, f2f: np.ndarray) -> torch.Tensor:    
-    fc = torch.from_numpy(fc).float().to(fn.device)
-    f2f = torch.from_numpy(f2f).long().to(fn.device)
-    
-    neig_fc = fc[f2f]
-    fc0_tile = fc.repeat(1, 3).reshape(-1, 3, 3)
-    fc_dist = torch.norm(neig_fc - fc0_tile, dim=2)
-    sigma_c = torch.sum(fc_dist) / (fc_dist.shape[0] * fc_dist.shape[1])
-
-    new_fn = fn
-    for i in range(20):
-        neig_fn = new_fn[f2f]
-        fn0_tile = new_fn.repeat(1, 3).reshape(-1, 3, 3)
-        fn_dist = torch.norm(neig_fn - fn0_tile, dim=2)
-        sigma_s = 0.3
-
-        wc = torch.exp(-1.0 * (fc_dist ** 2) / (2 * (sigma_c ** 2) + 1.0e-12))
-        ws = torch.exp(-1.0 * (fn_dist ** 2) / (2 * (sigma_s ** 2) + 1.0e-12))
-        W = torch.stack([wc*ws, wc*ws, wc*ws], dim=2)
-
-        new_fn = torch.sum(W * neig_fn, dim=1)
-        new_fn = new_fn / torch.norm(new_fn, dim=1, keepdim=True)
-
-    dif_fn = new_fn - fn
-    dif_fn = dif_fn ** 2
-    loss = torch.sum(dif_fn, dim=1)
-    loss = torch.sum(loss, dim=0) / fn.shape[0]
-
-    return loss
-
 def fn_bilap_loss(fn: torch.Tensor, fc: np.ndarray, f2f: np.ndarray) -> torch.Tensor:
     fc = torch.from_numpy(fc).float().to(fn.device)
     f2f = torch.from_numpy(f2f).long().to(fn.device)
@@ -212,16 +242,6 @@ def fn_bilap_loss(fn: torch.Tensor, fc: np.ndarray, f2f: np.ndarray) -> torch.Te
     loss = torch.sum(loss) / len(loss)
     
     return loss
-
-
-def mad(mesh1, mesh2):
-    Mesh.compute_face_normals(mesh1)
-    Mesh.compute_face_normals(mesh2)
-    inner = [np.inner(mesh1.fn[i], mesh2.fn[i]) for i in range(mesh1.fn.shape[0])]
-    sad = np.rad2deg(np.arccos(np.clip(inner, -1.0, 1.0)))
-    mad = np.sum(sad) / len(sad)
-
-    return mad
 
 def pos4norm(vs, o_mesh, fn):
     #vs = o_mesh.vs
