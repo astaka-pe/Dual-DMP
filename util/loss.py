@@ -1,8 +1,12 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
+import copy
 from util.mesh import Mesh
 from typing import Union
+from tinymesh import denoise_normal_bilateral
+from tinymesh import Mesh as TMesh
+from scipy.sparse import csr_matrix
 
 def rmse_loss(pred_pos: Union[torch.Tensor, np.ndarray], real_pos: np.ndarray) -> torch.Tensor:
     """ root mean-square error for vertex positions """
@@ -27,8 +31,76 @@ def norm_cos_loss(pred_norm: Union[torch.Tensor, np.ndarray], real_norm: Union[t
     lap_loss = torch.sum(lap_cos, dim=0) / len(lap_cos)
     return lap_loss
 
+def bnf(fn: Union[torch.Tensor, np.ndarray], mesh: Mesh, sigma_s=0.7, sigma_c=0.2, iter=1) -> torch.Tensor:
+    """ bilateral normal filtering """
+    if type(fn) == torch.Tensor:
+        fn = fn.to("cpu").detach().numpy().copy()
+    new_fn = fn
+    new_mesh = copy.deepcopy(mesh)
+
+    for _ in range(iter):
+        vs = new_mesh.vs
+        vf = new_mesh.vf
+        fc = new_mesh.fc
+        fa = new_mesh.fa
+        f2f = new_mesh.f2f
+        
+        neig_fc = fc[f2f]
+        neig_fa = fa[f2f]
+        fc0_tile = np.tile(fc, (1, 3)).reshape(-1, 3, 3)
+        fc_dist = np.linalg.norm(neig_fc - fc0_tile, axis=2)
+        #sigma_c = np.sum(fc_dist) / (fc_dist.shape[0] * fc_dist.shape[1])
+        
+        """ normal updating """
+        neig_fn = new_fn[f2f]
+        fn0_tile = np.tile(new_fn, (1, 3)).reshape(-1, 3, 3)
+        fn_dist = np.linalg.norm(neig_fn - fn0_tile, axis=2)
+
+        wc = np.exp(-1.0 * (fc_dist ** 2) / (2 * (sigma_c ** 2)))
+        ws = np.exp(-1.0 * (fn_dist ** 2) / (2 * (sigma_s ** 2)))
+        
+        W = np.stack([wc*ws*neig_fa, wc*ws*neig_fa, wc*ws*neig_fa], 2)
+
+        new_fn = np.sum(W * neig_fn, 1)
+        new_fn = new_fn / (np.linalg.norm(new_fn, axis=1, keepdims=True) + 1.0e-12)
+
+        """ vertex updating """
+        if iter > 1:
+            v2f_inds = np.array(new_mesh.v2f_list[0])
+            v2f_vals = np.array(new_mesh.v2f_list[1])
+            v2f_areas = np.array(new_mesh.v2f_list[2]).reshape(-1, 1)
+            nk = new_fn[v2f_inds[1]]
+            ak = fa[v2f_inds[1]]
+            v2f_data = np.sum(nk * v2f_vals, 1) * ak
+            v2f_mat = csr_matrix((v2f_data, v2f_inds), shape=(len(vs), len(new_fn)))
+            d_vs = v2f_mat * new_fn
+            d_vs /= (v2f_areas + 1.0e-12)
+            new_mesh.vs += d_vs
+            Mesh.compute_face_center(new_mesh)
+            Mesh.compute_face_normals(new_mesh)
+        
+        #TODO: speed-up by using sparse-matrix
+        """
+        else:
+            for v in range(len(vs)):
+                f_list = list(vf[v])
+                fc_v = fc[f_list]
+                new_fn_v = new_fn[f_list]
+                sumArea = np.sum(fa[f_list])
+                incr = fa[f_list] * np.sum(new_fn_v * (fc_v - vs[v].reshape(-1, 3)), 1)
+                incr = incr.reshape(-1, 1) * new_fn_v
+                incr = np.sum(incr, 0)
+                incr /= sumArea
+                new_mesh.vs[v] += incr
+            #Mesh.compute_face_center(new_mesh)
+            #Mesh.compute_face_normals(new_mesh)
+        """
+
+    return new_fn, new_mesh
+
 def fn_bnf_loss(fn: torch.Tensor, mesh: Mesh) -> torch.Tensor:
     """ bilateral loss for face normal """
+    """
     fc = torch.from_numpy(mesh.fc).float().to(fn.device)
     fa = torch.from_numpy(mesh.fa).float().to(fn.device)
     f2f = torch.from_numpy(mesh.f2f).long().to(fn.device)
@@ -38,26 +110,29 @@ def fn_bnf_loss(fn: torch.Tensor, mesh: Mesh) -> torch.Tensor:
     fc0_tile = fc.repeat(1, 3).reshape(-1, 3, 3)
     fc_dist = torch.norm(neig_fc - fc0_tile + 1.0e-6, dim=2)
     sigma_c = torch.sum(fc_dist) / (fc_dist.shape[0] * fc_dist.shape[1])
+    new_fn = fn.clone()
+    with torch.no_grad():
+        for i in range(5):
+            neig_fn = new_fn[f2f]
+            fn0_tile = new_fn.repeat(1, 3).reshape(-1, 3, 3)
+            fn_dist = torch.norm(neig_fn - fn0_tile + 1.0e-6, dim=2)
+            sigma_s = 0.3
+            wc = torch.exp(-1.0 * (fc_dist ** 2) / (2 * (sigma_c ** 2) + 1.0e-6))
+            ws = torch.exp(-1.0 * (fn_dist ** 2) / (2 * (sigma_s ** 2) + 1.0e-6))
+            
+            W = torch.stack([wc*ws*neig_fa, wc*ws*neig_fa, wc*ws*neig_fa], dim=2)
 
-    new_fn = fn
-    for i in range(5):
-        neig_fn = new_fn[f2f]
-        fn0_tile = new_fn.repeat(1, 3).reshape(-1, 3, 3)
-        fn_dist = torch.norm(neig_fn - fn0_tile + 1.0e-6, dim=2)
-        sigma_s = 0.3
-        wc = torch.exp(-1.0 * (fc_dist ** 2) / (2 * (sigma_c ** 2) + 1.0e-6))
-        ws = torch.exp(-1.0 * (fn_dist ** 2) / (2 * (sigma_s ** 2) + 1.0e-6))
-        
-        W = torch.stack([wc*ws*neig_fa, wc*ws*neig_fa, wc*ws*neig_fa], dim=2)
-
-        new_fn = torch.sum(W * neig_fn, dim=1)
-        new_fn = new_fn / (torch.norm(new_fn + 1.0e-6, dim=1, keepdim=True) + 1.0e-6)
-
+            new_fn = torch.sum(W * neig_fn, dim=1)
+            new_fn = new_fn / (torch.norm(new_fn + 1.0e-6, dim=1, keepdim=True) + 1.0e-6)
+    """
+    new_fn = fn.detach()
+    new_fn, _ = bnf(new_fn, mesh)
+    new_fn = torch.from_numpy(new_fn).to(fn.device)
     dif_fn = new_fn - fn
     dif_fn = dif_fn ** 2
     loss = torch.sum(dif_fn, dim=1)
     loss = torch.sum(loss, dim=0) / fn.shape[0]
-    loss = torch.sqrt(loss + 1.0e-6)
+    loss = torch.sqrt(loss + 1.0e-12)
 
     return loss
 
@@ -94,6 +169,7 @@ def mesh_laplacian_loss(pred_pos: torch.Tensor, mesh: Mesh) -> torch.Tensor:
     lap_vals = torch.sqrt(torch.sum(lap_vals * lap_vals, dim=1) + 1.0e-12)
     #lap_vals = torch.sum(lap_vals * lap_vals, dim=1)
     lap_loss = torch.sum(lap_vals) / torch.sum(nnz_mask)
+    #lap_loss = torch.sqrt(lap_loss + 1.0e-12)
 
     return lap_loss
 

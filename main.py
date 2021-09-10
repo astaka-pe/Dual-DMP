@@ -8,6 +8,7 @@ import sys
 import glob
 import argparse
 import json
+import wandb
 import util.loss as Loss
 import util.models as Models
 import util.datamaker as Datamaker
@@ -36,16 +37,28 @@ mesh_dic, dataset = Datamaker.create_dataset(FLAGS.input)
 gt_file, n_file, s_file, mesh_name = mesh_dic["gt_file"], mesh_dic["n_file"], mesh_dic["s_file"], mesh_dic["mesh_name"]
 gt_mesh, n_mesh, o1_mesh, s_mesh = mesh_dic["gt_mesh"], mesh_dic["n_mesh"], mesh_dic["o1_mesh"], mesh_dic["s_mesh"]
 
+dt_now = datetime.datetime.now()
+
+""" --- hyper parameters --- """
+wandb.init(project="dmp-adv", group=mesh_name, job_type=FLAGS.ntype, name=dt_now.isoformat(),
+           config={
+               "pos_lr": 0.01,
+               "norm_lr": 0.001,
+               "grad_crip": 0.8,
+               "pos_lambda": 1.4,
+               "norm_lambda": 0.4
+           })
+config = wandb.config
+
 """ --- create model instance --- """
 device = torch.device('cuda:' + str(FLAGS.gpu) if torch.cuda.is_available() else 'cpu')
 posnet = PosNet(device).to(device)
 normnet = NormalNet(device).to(device)
 #normnet = SphereNet(device).to(device)
-optimizer_pos = torch.optim.Adam(posnet.parameters(), lr=FLAGS.lr)
-optimizer_norm = torch.optim.Adam(normnet.parameters(), lr=1.0e-3)
+optimizer_pos = torch.optim.Adam(posnet.parameters(), lr=config.pos_lr)
+optimizer_norm = torch.optim.Adam(normnet.parameters(), lr=config.norm_lr)
 
 """ --- output experimental conditions --- """
-dt_now = datetime.datetime.now()
 log_dir = "./logs/" + mesh_name + dt_now.isoformat()
 writer = SummaryWriter(log_dir=log_dir)
 log_file = log_dir + "/condition.json"
@@ -59,7 +72,8 @@ os.makedirs("datasets/" + mesh_name + "/output", exist_ok=True)
 
 """ --- initial condition --- """
 min_mad = 1000
-min_norm_loss = 1000
+min_rmse_norm = 1000
+min_rmse_pos = 1000
 init_mad = Loss.mad(n_mesh.fn, gt_mesh.fn)
 init_vn_loss = Loss.rmse_loss(n_mesh.vn, gt_mesh.vn)
 init_fn_loss = Loss.rmse_loss(n_mesh.fn, gt_mesh.fn)
@@ -72,7 +86,7 @@ for epoch in range(1, FLAGS.iter+1):
         optimizer_pos.zero_grad()
         pos = posnet(dataset)
         loss_pos1 = Loss.rmse_loss(pos, n_mesh.vs)
-        loss_pos2 = FLAGS.lap * Loss.mesh_laplacian_loss(pos, n_mesh)
+        loss_pos2 = config.pos_lambda * Loss.mesh_laplacian_loss(pos, n_mesh)
         o1_mesh.vs = pos.to('cpu').detach().numpy().copy()
         fn2 = Models.compute_fn(pos, n_mesh.faces).float()
         
@@ -82,6 +96,7 @@ for epoch in range(1, FLAGS.iter+1):
         writer.add_scalar("pos1", loss_pos1, epoch)
         writer.add_scalar("pos2", loss_pos2, epoch)
         writer.add_scalar("pos", loss_pos, epoch)
+        wandb.log({"pos": loss_pos, "pos1": loss_pos1, "pos2": loss_pos2})
     
     elif FLAGS.ntype == "norm":
         normnet.train()
@@ -89,15 +104,16 @@ for epoch in range(1, FLAGS.iter+1):
         norm = normnet(dataset)
 
         loss_norm1 = Loss.norm_cos_loss(norm, n_mesh.fn)
-        loss_norm2 = 0.5 * Loss.fn_bnf_loss(norm, n_mesh)
+        loss_norm2 = config.norm_lambda * Loss.fn_bnf_loss(norm, n_mesh)
         loss_norm = loss_norm1 + loss_norm2
         loss_norm.backward()
-        nn.utils.clip_grad_norm_(normnet.parameters(), 1.0)
+        #nn.utils.clip_grad_norm_(normnet.parameters(), config.grad_crip)
         optimizer_norm.step()
 
         writer.add_scalar("norm1", loss_norm1, epoch)
         writer.add_scalar("norm2", loss_norm2, epoch)
         writer.add_scalar("norm", loss_norm, epoch)
+        wandb.log({"norm": loss_norm, "norm1": loss_norm1, "norm2": loss_norm2})
 
     elif FLAGS.ntype == "sphere":
         normnet.train()
@@ -123,20 +139,20 @@ for epoch in range(1, FLAGS.iter+1):
 
         pos = posnet(dataset)
         loss_pos1 = Loss.rmse_loss(pos, n_mesh.vs)
-        loss_pos2 = FLAGS.lap * Loss.mesh_laplacian_loss(pos, n_mesh)
+        loss_pos2 = config.pos_lambda * Loss.mesh_laplacian_loss(pos, n_mesh)
 
         norm = normnet(dataset)
         loss_norm1 = Loss.norm_cos_loss(norm, n_mesh.fn)
-        loss_norm2 = 0.5 * Loss.fn_bnf_loss(norm, n_mesh)
+        loss_norm2 = config.norm_lambda * Loss.fn_bnf_loss(norm, n_mesh)
 
         fn2 = Models.compute_fn(pos, n_mesh.faces).float()
-        loss_pos3 = Loss.norm_cos_loss(fn2, norm)
+        loss_pos3 = loss_norm3 = Loss.norm_cos_loss(fn2, norm)
         
         loss_pos = loss_pos1 + loss_pos2 + loss_pos3
-        loss_norm = loss_norm1 + loss_norm2
+        loss_norm = loss_norm1 + loss_norm2 + loss_norm3
         loss_pos.backward(retain_graph=True)
         loss_norm.backward()
-        nn.utils.clip_grad_norm_(normnet.parameters(), 1.0)
+        nn.utils.clip_grad_norm_(normnet.parameters(), config.grad_crip)
         optimizer_pos.step()
         optimizer_norm.step()
 
@@ -147,6 +163,7 @@ for epoch in range(1, FLAGS.iter+1):
         writer.add_scalar("norm1", loss_norm1, epoch)
         writer.add_scalar("norm2", loss_norm2, epoch)
         writer.add_scalar("norm", loss_norm, epoch)
+        wandb.log({"pos": loss_pos, "pos1": loss_pos1, "pos2": loss_pos2, "pos3": loss_pos3, "norm": loss_norm, "norm1": loss_norm1, "norm2": loss_norm2})
 
     if epoch % 10 == 0:
         if FLAGS.ntype == "pos":
@@ -165,36 +182,49 @@ for epoch in range(1, FLAGS.iter+1):
             Mesh.compute_vert_normals(o1_mesh)
             mad_value = Loss.mad(o1_mesh.fn, gt_mesh.fn)
             min_mad = min(mad_value, min_mad)
-            print("mad_value: ", mad_value, "min_mad: ", min_mad)
+            test_rmse_pos = Loss.rmse_loss(pos, gt_mesh.vs)
+            min_rmse_pos = min(min_rmse_pos, test_rmse_pos)
             writer.add_scalar("MAD", mad_value, epoch)
+            wandb.log({"MAD": mad_value, "RMSE_pos": test_rmse_pos})
             Mesh.save(o1_mesh, "datasets/" + mesh_name + "/output/" + str(epoch) + "_pos.obj")
+            print("mad_value: ", mad_value, "min_mad: ", min_mad)
 
         elif FLAGS.ntype == "norm":
-            test_norm_loss = Loss.rmse_loss(norm, gt_mesh.fn)
-            min_norm_loss = min(min_norm_loss, test_norm_loss)
-            print("test_norm_loss: ", float(test_norm_loss), "min_norm_loss: ", float(min_norm_loss))
-            writer.add_scalar("test_norm", test_norm_loss, epoch)
+            mad_value = Loss.mad(norm, gt_mesh.fn)
+            min_mad = min(mad_value, min_mad)
+            test_rmse_norm = Loss.rmse_loss(norm, gt_mesh.fn)
+            min_rmse_norm = min(min_rmse_norm, test_rmse_norm)
+            writer.add_scalar("MAD", mad_value, epoch)
+            writer.add_scalar("test_norm", test_rmse_norm, epoch)
+            wandb.log({"MAD": mad_value, "RMSE_norm": test_rmse_norm})
+            Mesh.save_as_ply(gt_mesh, "datasets/" + mesh_name + "/output/" + str(epoch) + "_norm.ply", norm.to("cpu").detach().numpy().copy())
+            print("mad_value: ", mad_value, "min_mad: ", min_mad)
+            print("test_rmse: ", float(test_rmse_norm), "min_rmse: ", float(min_rmse_norm))
 
         elif FLAGS.ntype == "sphere":
             normal = Models.uv2xyz(norm)
-            test_norm_loss = Loss.rmse_loss(normal, gt_mesh.fn)
-            min_norm_loss = min(min_norm_loss, test_norm_loss)
-            print("test_norm_loss: ", float(test_norm_loss), "min_norm_loss: ", float(min_norm_loss))
-            writer.add_scalar("test_norm", test_norm_loss, epoch)
+            test_rmse = Loss.rmse_loss(normal, gt_mesh.fn)
+            min_rmse = min(min_rmse, test_rmse)
+            print("test_rmse: ", float(test_rmse), "min_rmse: ", float(min_rmse))
+            writer.add_scalar("test_norm", test_rmse, epoch)
 
-        else:
+        elif FLAGS.ntype == "hybrid":
             o1_mesh.vs = pos.to('cpu').detach().numpy().copy()
             Mesh.compute_face_normals(o1_mesh)
             Mesh.compute_vert_normals(o1_mesh)
             """ DMP-Pos """
             mad_value = Loss.mad(o1_mesh.fn, gt_mesh.fn)
             min_mad = min(mad_value, min_mad)
-            print("mad_value: ", mad_value, "min_mad: ", min_mad)
             writer.add_scalar("MAD", mad_value, epoch)
             Mesh.save(o1_mesh, "datasets/" + mesh_name + "/output/" + str(epoch) + "_hybrid.obj")
+            print("mad_value: ", mad_value, "min_mad: ", min_mad)
             
             """ DMP-Norm """
-            test_norm_loss = Loss.rmse_loss(norm, gt_mesh.fn)
-            min_norm_loss = min(min_norm_loss, test_norm_loss)
-            print("test_norm_loss: ", float(test_norm_loss), "min_norm_loss: ", float(min_norm_loss))
-            writer.add_scalar("test_norm", test_norm_loss, epoch)
+            test_rmse_norm = Loss.rmse_loss(norm, gt_mesh.fn)
+            min_rmse_norm = min(min_rmse_norm, test_rmse_norm)
+            print("test_rmse: ", float(test_rmse_norm), "min_rmse: ", float(min_rmse_norm))
+            writer.add_scalar("test_norm", test_rmse_norm, epoch)
+
+            wandb.log({"MAD": mad_value, "RMSE_norm": test_rmse_norm})
+
+    wandb.save(log_dir + "/model.h5")

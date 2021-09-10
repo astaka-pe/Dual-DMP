@@ -14,7 +14,7 @@ class Mesh:
         self.device = 'cpu'
         self.build_gemm() #self.edges, self.ve
         self.compute_vert_normals()
-        self.compute_fn_sphere()
+        #self.compute_fn_sphere()
         self.build_vf()
         if build_mat:
             self.build_uni_lap()
@@ -179,7 +179,19 @@ class Mesh:
             vf[f[1]].add(i)
             vf[f[2]].add(i)
         self.vf = vf
-        
+
+        """ build v2f_matrix """
+        v2f_inds = [[] for _ in range(2)]
+        v2f_vals = []
+        v2f_areas = [[] for _ in range(len(self.vs))]
+        for i in range(len(vf)):
+            v2f_inds[1] += list(vf[i])
+            v2f_inds[0] += [i] * len(vf[i])
+            v2f_vals += (self.fc[list(vf[i])] - self.vs[i].reshape(1, -1)).tolist()
+            v2f_areas[i] = np.sum(self.fa[list(vf[i])])
+        self.v2f_list = [v2f_inds, v2f_vals, v2f_areas]
+
+        """ build f2f_matrix """        
         f2f = [[] for _ in range(len(self.faces))]
         f_edges = np.array([[i] * 3 for i in range(len(self.faces))])
         #f_edges_ext = [[] for _ in range(2)]
@@ -322,3 +334,36 @@ class Mesh:
                 i1 = indices[i + 1] + 1
                 i2 = indices[i + 2] + 1
                 fp.write('f {0} {1} {2}\n'.format(i0, i1, i2))
+    
+    def save_as_ply(self, filename, fn):
+        assert len(self.vs) > 0
+        vertices = np.array(self.vs, dtype=np.float32).flatten()
+        indices = np.array(self.faces, dtype=np.uint32).flatten()
+        fnormals = np.array(fn, dtype=np.float32).flatten()
+
+        with open(filename, 'w') as fp:
+            # Write Header
+            fp.write("ply\nformat ascii 1.0\nelement vertex {}\n".format(len(self.vs)))
+            fp.write("property float x\nproperty float y\nproperty float z\n")
+            fp.write("element face {}\n".format(len(self.faces)))
+            fp.write("property list uchar int vertex_indices\n")
+            fp.write("property uchar red\nproperty uchar green\nproperty uchar blue\nproperty uchar alpha\n")
+            fp.write("end_header\n")
+            for i in range(0, vertices.size, 3):
+                x = vertices[i + 0]
+                y = vertices[i + 1]
+                z = vertices[i + 2]
+                fp.write("{0:.6f} {1:.6f} {2:.6f}\n".format(x, y, z))
+            
+            for i in range(0, len(indices), 3):
+                i0 = indices[i + 0]
+                i1 = indices[i + 1]
+                i2 = indices[i + 2]
+                c0 = fnormals[i + 0]
+                c1 = fnormals[i + 1]
+                c2 = fnormals[i + 2]
+                c0 = np.clip(int(255 * (c0 + 1) / 2), 0, 255)
+                c1 = np.clip(int(255 * (c1 + 1) / 2), 0, 255)
+                c2 = np.clip(int(255 * (c2 + 1) / 2), 0, 255)
+                c3 = 255
+                fp.write("3 {0} {1} {2} {3} {4} {5} {6}\n".format(i0, i1, i2, c0, c1, c2, c3))
