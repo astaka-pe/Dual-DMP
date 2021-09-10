@@ -65,7 +65,8 @@ def bnf(fn: Union[torch.Tensor, np.ndarray], mesh: Mesh, sigma_s=0.7, sigma_c=0.
         new_fn = new_fn / (np.linalg.norm(new_fn, axis=1, keepdims=True) + 1.0e-12)
 
         """ vertex updating """
-        if iter > 1:
+        # TODO: fix bug for high-speed computation
+        if iter == -1:
             v2f_inds = np.array(new_mesh.v2f_list[0])
             v2f_vals = np.array(new_mesh.v2f_list[1])
             v2f_areas = np.array(new_mesh.v2f_list[2]).reshape(-1, 1)
@@ -79,8 +80,7 @@ def bnf(fn: Union[torch.Tensor, np.ndarray], mesh: Mesh, sigma_s=0.7, sigma_c=0.
             Mesh.compute_face_center(new_mesh)
             Mesh.compute_face_normals(new_mesh)
         
-        #TODO: speed-up by using sparse-matrix
-        """
+        #TODO: use this temporarily (slow!)
         else:
             for v in range(len(vs)):
                 f_list = list(vf[v])
@@ -92,9 +92,9 @@ def bnf(fn: Union[torch.Tensor, np.ndarray], mesh: Mesh, sigma_s=0.7, sigma_c=0.
                 incr = np.sum(incr, 0)
                 incr /= sumArea
                 new_mesh.vs[v] += incr
-            #Mesh.compute_face_center(new_mesh)
-            #Mesh.compute_face_normals(new_mesh)
-        """
+            if iter > 1:
+                Mesh.compute_face_center(new_mesh)
+                Mesh.compute_face_normals(new_mesh)
 
     return new_fn, new_mesh
 

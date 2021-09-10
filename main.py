@@ -46,7 +46,7 @@ wandb.init(project="dmp-adv", group=mesh_name, job_type=FLAGS.ntype, name=dt_now
                "norm_lr": 0.001,
                "grad_crip": 0.8,
                "pos_lambda": 1.4,
-               "norm_lambda": 0.4
+               "norm_lambda": 0.5
            })
 config = wandb.config
 
