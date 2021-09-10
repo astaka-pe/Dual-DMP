@@ -1,6 +1,9 @@
 datasets
 logs
 _program
+wandb
 
 *.obj
 *.ipynb
+*.yaml
+*.pyc

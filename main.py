@@ -59,7 +59,7 @@ os.makedirs("datasets/" + mesh_name + "/output", exist_ok=True)
 
 """ --- initial condition --- """
 min_mad = 1000
-min_norm_loss = 1000
+min_rmse_norm = 1000
 init_mad = Loss.mad(n_mesh.fn, gt_mesh.fn)
 init_vn_loss = Loss.rmse_loss(n_mesh.vn, gt_mesh.vn)
 init_fn_loss = Loss.rmse_loss(n_mesh.fn, gt_mesh.fn)
@@ -104,7 +104,7 @@ for epoch in range(1, FLAGS.iter+1):
         optimizer_norm.zero_grad()
         norm = normnet(dataset)
 
-        loss_norm1 = l1loss(norm, torch.tensor(n_mesh.fn_uv).float().to(device))
+        loss_norm1 = Loss.norm_cos_loss(norm, torch.tensor(n_mesh.fn_uv).float().to(device))
         loss_norm2 = 5.0 * Loss.fn_lap_loss(norm, n_mesh.f2f_mat)
         #loss_norm2 = 10.0 * Loss.fn_bilap_loss(norm, n_mesh.fc, n_mesh.f2f)
         loss_norm = loss_norm1 + loss_norm2
@@ -170,10 +170,14 @@ for epoch in range(1, FLAGS.iter+1):
             Mesh.save(o1_mesh, "datasets/" + mesh_name + "/output/" + str(epoch) + "_pos.obj")
 
         elif FLAGS.ntype == "norm":
-            test_norm_loss = Loss.rmse_loss(norm, gt_mesh.fn)
-            min_norm_loss = min(min_norm_loss, test_norm_loss)
-            print("test_norm_loss: ", float(test_norm_loss), "min_norm_loss: ", float(min_norm_loss))
-            writer.add_scalar("test_norm", test_norm_loss, epoch)
+            mad_value = Loss.mad(norm, gt_mesh.fn)
+            min_mad = min(mad_value, min_mad)
+            test_rmse_norm = Loss.rmse_loss(norm, gt_mesh.fn)
+            min_rmse_norm = min(min_rmse_norm, test_rmse_norm)
+            writer.add_scalar("MAD", mad_value, epoch)
+            writer.add_scalar("test_norm", test_rmse_norm, epoch)
+            print("mad_value: ", mad_value, "min_mad: ", min_mad)
+            print("test_rmse: ", float(test_rmse_norm), "min_rmse: ", float(min_rmse_norm))
 
         elif FLAGS.ntype == "sphere":
             normal = Models.uv2xyz(norm)
