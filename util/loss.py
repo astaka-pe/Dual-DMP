@@ -98,9 +98,15 @@ def bnf(fn: Union[torch.Tensor, np.ndarray], mesh: Mesh, sigma_s=0.7, sigma_c=0.
 
     return new_fn, new_mesh
 
+def squared_norm(x, dim=None, keepdim=False):
+    return torch.sum(x * x, dim=dim, keepdim=keepdim)
+
+def norm(x, eps=1.0e-6, dim=None, keepdim=False):
+    return torch.sqrt(squared_norm(x, dim=dim, keepdim=keepdim) + eps)
+
 def fn_bnf_loss(fn: torch.Tensor, mesh: Mesh) -> torch.Tensor:
     """ bilateral loss for face normal """
-    """
+    
     fc = torch.from_numpy(mesh.fc).float().to(fn.device)
     fa = torch.from_numpy(mesh.fa).float().to(fn.device)
     f2f = torch.from_numpy(mesh.f2f).long().to(fn.device)
@@ -108,26 +114,28 @@ def fn_bnf_loss(fn: torch.Tensor, mesh: Mesh) -> torch.Tensor:
     neig_fc = fc[f2f]
     neig_fa = fa[f2f]
     fc0_tile = fc.repeat(1, 3).reshape(-1, 3, 3)
-    fc_dist = torch.norm(neig_fc - fc0_tile + 1.0e-6, dim=2)
-    sigma_c = torch.sum(fc_dist) / (fc_dist.shape[0] * fc_dist.shape[1])
-    new_fn = fn.clone()
-    with torch.no_grad():
-        for i in range(5):
-            neig_fn = new_fn[f2f]
-            fn0_tile = new_fn.repeat(1, 3).reshape(-1, 3, 3)
-            fn_dist = torch.norm(neig_fn - fn0_tile + 1.0e-6, dim=2)
-            sigma_s = 0.3
-            wc = torch.exp(-1.0 * (fc_dist ** 2) / (2 * (sigma_c ** 2) + 1.0e-6))
-            ws = torch.exp(-1.0 * (fn_dist ** 2) / (2 * (sigma_s ** 2) + 1.0e-6))
-            
-            W = torch.stack([wc*ws*neig_fa, wc*ws*neig_fa, wc*ws*neig_fa], dim=2)
 
-            new_fn = torch.sum(W * neig_fn, dim=1)
-            new_fn = new_fn / (torch.norm(new_fn + 1.0e-6, dim=1, keepdim=True) + 1.0e-6)
-    """
-    new_fn = fn.detach()
-    new_fn, _ = bnf(new_fn, mesh)
-    new_fn = torch.from_numpy(new_fn).to(fn.device)
+    fc_dist = squared_norm(neig_fc - fc0_tile, dim=2)  
+    sigma_c = torch.mean(torch.sqrt(fc_dist))
+    sigma_s = 0.3
+    new_fn = fn
+
+    for i in range(5):
+        neig_fn = new_fn[f2f]
+        fn0_tile = new_fn.repeat(1, 3).reshape(-1, 3, 3)
+        fn_dist = squared_norm(neig_fn - fn0_tile, dim=2)
+        
+        wc = torch.exp(-1.0 * fc_dist / (2 * (sigma_c ** 2)))
+        ws = torch.exp(-1.0 * fn_dist / (2 * (sigma_s ** 2)))
+        
+        W = torch.stack([wc*ws*neig_fa, wc*ws*neig_fa, wc*ws*neig_fa], dim=2)
+
+        new_fn = torch.sum(W * neig_fn, dim=1)
+        new_fn = new_fn / (norm(new_fn, dim=1, keepdim=True) + 1.0e-6)
+        
+    #new_fn = fn.detach()
+    #new_fn, _ = bnf(new_fn, mesh)
+    #new_fn = torch.from_numpy(new_fn).to(fn.device)
     dif_fn = new_fn - fn
     dif_fn = dif_fn ** 2
     loss = torch.sum(dif_fn, dim=1)
