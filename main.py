@@ -24,7 +24,8 @@ parser = argparse.ArgumentParser(description='DMP_adv for mesh')
 parser.add_argument('-i', '--input', type=str, required=True)
 parser.add_argument('--lr', type=float, default=0.01)
 parser.add_argument('--iter', type=int, default=5000)
-parser.add_argument('--lap', type=float, default=1.4)
+parser.add_argument('--pos_lambda', type=float, default=1.4)
+parser.add_argument('--norm_lambda', type=float, default=0.5)
 parser.add_argument('--gpu', type=int, default=0)
 parser.add_argument('--ntype', type=str, default='hybrid')
 FLAGS = parser.parse_args()
@@ -45,14 +46,15 @@ wandb.init(project="dmp-adv", group=mesh_name, job_type=FLAGS.ntype, name=dt_now
                "pos_lr": 0.01,
                "norm_lr": 0.001,
                "grad_crip": 0.8,
-               "pos_lambda": 1.4,
-               "norm_lambda": 0.5
+               "pos_lambda": FLAGS.pos_lambda,
+               "norm_lambda": FLAGS.norm_lambda
            })
 config = wandb.config
 
 """ --- create model instance --- """
 device = torch.device('cuda:' + str(FLAGS.gpu) if torch.cuda.is_available() else 'cpu')
 posnet = PosNet(device).to(device)
+torch.manual_seed(314)
 normnet = NormalNet(device).to(device)
 #normnet = SphereNet(device).to(device)
 optimizer_pos = torch.optim.Adam(posnet.parameters(), lr=config.pos_lr)
@@ -107,7 +109,7 @@ for epoch in range(1, FLAGS.iter+1):
         loss_norm2 = config.norm_lambda * Loss.fn_bnf_loss(norm, n_mesh)
         loss_norm = loss_norm1 + loss_norm2
         loss_norm.backward()
-        #nn.utils.clip_grad_norm_(normnet.parameters(), config.grad_crip)
+        nn.utils.clip_grad_norm_(normnet.parameters(), config.grad_crip)
         optimizer_norm.step()
 
         writer.add_scalar("norm1", loss_norm1, epoch)
