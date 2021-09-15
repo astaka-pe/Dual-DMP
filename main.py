@@ -55,10 +55,14 @@ config = wandb.config
 device = torch.device('cuda:' + str(FLAGS.gpu) if torch.cuda.is_available() else 'cpu')
 posnet = PosNet(device).to(device)
 torch.manual_seed(314)
+torch.cuda.manual_seed_all(314)
+torch.backends.cudnn.deterministic = True
 normnet = NormalNet(device).to(device)
 #normnet = SphereNet(device).to(device)
 optimizer_pos = torch.optim.Adam(posnet.parameters(), lr=config.pos_lr)
 optimizer_norm = torch.optim.Adam(normnet.parameters(), lr=config.norm_lr)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer_norm, step_size=100, gamma=0.9)
+#scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_norm, T_max=50)
 
 """ --- output experimental conditions --- """
 log_dir = "./logs/" + mesh_name + dt_now.isoformat()
@@ -79,6 +83,7 @@ min_rmse_pos = 1000
 init_mad = Loss.mad(n_mesh.fn, gt_mesh.fn)
 init_vn_loss = Loss.rmse_loss(n_mesh.vn, gt_mesh.vn)
 init_fn_loss = Loss.rmse_loss(n_mesh.fn, gt_mesh.fn)
+past_norm2 = 1000 #TODO: Remove this!
 print("init_mad: ", init_mad, " init_vn_loss: ", float(init_vn_loss), " init_fn_loss: ", float(init_fn_loss))
 
 """ --- learning loop --- """
@@ -107,10 +112,21 @@ for epoch in range(1, FLAGS.iter+1):
 
         loss_norm1 = Loss.norm_cos_loss(norm, n_mesh.fn)
         loss_norm2 = config.norm_lambda * Loss.fn_bnf_loss(norm, n_mesh)
+        
+        #TODO: Remove this!
+        """
+        if loss_norm2 > 1.1 * past_norm2:
+            print("norm2 increased!")
+            import pdb;pdb.set_trace()
+            loss2 = Loss.fn_bnf_loss(norm, n_mesh)
+        past_norm2 = loss_norm2
+        """
+
         loss_norm = loss_norm1 + loss_norm2
         loss_norm.backward()
         nn.utils.clip_grad_norm_(normnet.parameters(), config.grad_crip)
         optimizer_norm.step()
+        scheduler.step()
 
         writer.add_scalar("norm1", loss_norm1, epoch)
         writer.add_scalar("norm2", loss_norm2, epoch)
@@ -171,7 +187,7 @@ for epoch in range(1, FLAGS.iter+1):
         if FLAGS.ntype == "pos":
             print('Epoch %d || Loss_P: %.4f' % (epoch, loss_pos.item()))
         elif FLAGS.ntype == "norm":
-            print('Epoch %d || Loss_N: %.4f' % (epoch, loss_norm.item()))
+            print('Epoch %d || Loss_N: %.4f || lr: %.4f' % (epoch, loss_norm.item(), scheduler.get_last_lr()[0]))
         elif FLAGS.ntype == "sphere":
             print('Epoch %d || Loss_N: %.4f' % (epoch, loss_norm.item()))
         else:

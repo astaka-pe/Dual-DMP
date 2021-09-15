@@ -128,7 +128,7 @@ def fn_bnf_loss(fn: torch.Tensor, mesh: Mesh) -> torch.Tensor:
         W = torch.stack([wc*ws*neig_fa, wc*ws*neig_fa, wc*ws*neig_fa], dim=2)
 
         new_fn = torch.sum(W * neig_fn, dim=1)
-        new_fn = new_fn / (norm(new_fn, dim=1, keepdim=True) + 1.0e-6)
+        new_fn = new_fn / (norm(new_fn, dim=1, keepdim=True) + 1.0e-12)
 
     dif_fn = new_fn - fn
     dif_fn = dif_fn ** 2

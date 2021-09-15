@@ -4,6 +4,7 @@ from functools import reduce
 from collections import Counter
 import scipy as sp
 from sklearn.preprocessing import normalize
+from util.mesh import Mesh
 
 def build_div(n_mesh, vn):
     vs = n_mesh.vs
@@ -149,3 +150,44 @@ def uv2xyz(uv):
     z = torch.cos(v)
     xyz = torch.stack([x, y, z]).T
     return xyz
+
+def compute_nvt(mesh: Mesh) -> np.ndarray:
+    f2ring = mesh.f2ring
+    fa = mesh.fa
+    fn = mesh.fn
+    fc = mesh.fc
+    
+    f_group = np.zeros([len(fn), 3])
+
+    for i, f in enumerate(f2ring):
+        ci = fc[i].reshape(1, -1)
+        cj = fc[f]
+        nj = fn[f]
+        """ (a cross b) cross a = (a dot a)b - (b dot a)a """
+        a_a = np.sum((cj - ci) ** 2, 1).reshape(-1, 1)
+        b_a = np.sum((cj - ci) * nj, 1).reshape(-1, 1)
+        wj = a_a * nj - b_a * (cj - ci)
+        wj = normalize(wj, norm="l2", axis=1)
+
+        nw = np.sum(nj * wj, 1).reshape(-1, 1)
+        nj_prime = 2 * nw * wj - nj
+        
+        am = np.max(fa[f]) + 1.0e-12
+        aj = fa[f]
+        cji_norm = np.linalg.norm(cj - ci, axis=1)
+        sigma = np.mean(cji_norm) + 1.0e-12
+        mu = (aj / am * np.exp(-cji_norm / sigma)).reshape(-1, 1)
+        Ti = np.matmul(nj_prime.T, (nj_prime * mu))
+        e_vals = np.sort(np.linalg.eig(Ti)[0])[::-1]
+        if len(e_vals) != 3:
+            print("len(e_vals) < 3 !")
+        elif e_vals[1] < 0.01 and e_vals[2] < 0.001:
+            f_group[i] = np.array([-1, -1, 1])
+        elif e_vals[1] > 0.01 and e_vals[2] < 0.1:
+            f_group[i] = np.array([0, 1, -1])
+        elif e_vals[2] > 0.1:
+            f_group[i] = np.array([-1, 1, -1])
+        else:
+            f_group[i] = np.array([-1, 0, 1])
+        
+    return f_group

@@ -4,5 +4,6 @@ wandb
 _program
 
 *.obj
+*.ply
 *.ipynb
 *.yaml

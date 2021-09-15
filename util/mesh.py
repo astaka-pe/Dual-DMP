@@ -198,27 +198,19 @@ class Mesh:
         for i, f in enumerate(self.faces):
             all_neig = list(vf[f[0]]) + list(vf[f[1]]) + list(vf[f[2]])
             neig_f, _ = zip(*Counter(all_neig).most_common(4)[1:])
-            #neig_f_ext, _ = zip(*Counter(all_neig).most_common()[1:])
             f2f[i] = list(neig_f)
-            #f_edges_ext[0] = f_edges_ext[0] + list(neig_f_ext)
-            #f_edges_ext[1] = f_edges_ext[1] + [i] * len(neig_f_ext)
 
+        """ build 2-ring neighborhood """
         self.f2f = np.array(f2f)
-        #f_edges_ext = np.array(f_edges_ext)
+        f2ring = self.f2f[self.f2f].reshape(-1, 9)
+        self.f2ring = [set(f) for f in f2ring]
+        self.f2ring = [list(self.f2ring[i] | set(f)) for i, f in enumerate(self.f2f)]
         
         self.f_edges = np.concatenate((self.f2f.reshape(1, -1), f_edges.reshape(1, -1)), 0)
         mat_inds = torch.from_numpy(self.f_edges).long()
         #mat_vals = torch.ones(mat_inds.shape[1]).float()
         mat_vals = torch.from_numpy(self.fa[self.f_edges[0]]).float()
-        #mat_inds_ident = torch.arange(len(self.faces)).repeat(2).reshape(2, -1)
-        #mat_vals_ident = torch.ones(len(self.faces)).float() * 3.0
-        #mat_inds = torch.cat([mat_inds, mat_inds_ident], dim=1)
-        #mat_vals = torch.cat([mat_vals, mat_vals_ident], dim=0)
         self.f2f_mat = torch.sparse.FloatTensor(mat_inds, mat_vals, size=torch.Size([len(self.faces), len(self.faces)]))
-        
-        #mat_inds_ext = torch.from_numpy(f_edges_ext).long()
-        #mat_vals_ext = torch.from_numpy(self.fa[f_edges_ext[0]]).float()
-        #self.f2f_mat_ext = torch.sparse.FloatTensor(mat_inds_ext, mat_vals_ext, size=torch.Size([len(self.faces), len(self.faces)]))
         
     def build_mesh_lap(self):
         """compute mesh laplacian matrix"""
