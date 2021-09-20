@@ -27,9 +27,21 @@ def norm_cos_loss(pred_norm: Union[torch.Tensor, np.ndarray], real_norm: Union[t
         pred_norm = torch.from_numpy(pred_norm)
     if type(real_norm) == np.ndarray:
         real_norm = torch.from_numpy(real_norm).to(pred_norm.device)
-    lap_cos = 1.0 - torch.sum(torch.mul(pred_norm, real_norm), dim=1)
-    lap_loss = torch.sum(lap_cos, dim=0) / len(lap_cos)
-    return lap_loss
+    cos_loss = 1.0 - torch.sum(torch.mul(pred_norm, real_norm), dim=1)
+    loss = torch.sum(cos_loss, dim=0) / len(cos_loss)
+    return loss
+
+def masked_norm_cos_loss(pred_norm: Union[torch.Tensor, np.ndarray], real_norm: Union[torch.Tensor, np.ndarray], mask: np.ndarray) -> torch.Tensor:
+    """ cosine distance for (vertex, face) normal """
+    if type(pred_norm) == np.ndarray:
+        pred_norm = torch.from_numpy(pred_norm)
+    if type(real_norm) == np.ndarray:
+        real_norm = torch.from_numpy(real_norm).to(pred_norm.device)
+    mask = torch.from_numpy(mask).to(pred_norm.device)
+    cos_loss = 1.0 - torch.sum(torch.mul(pred_norm, real_norm), dim=1)
+    cos_loss = cos_loss * mask
+    loss = torch.sum(cos_loss, dim=0) / len(cos_loss)
+    return loss
 
 def bnf(fn: Union[torch.Tensor, np.ndarray], mesh: Mesh, sigma_s=0.7, sigma_c=0.2, iter=1) -> torch.Tensor:
     """ bilateral normal filtering """
@@ -112,14 +124,16 @@ def fn_bnf_loss(fn: torch.Tensor, mesh: Mesh) -> torch.Tensor:
     
     neig_fc = fc[f2f]
     neig_fa = fa[f2f]
-    fc0_tile = fc.repeat(1, 3).reshape(-1, 3, 3)
+    #fc0_tile = fc.repeat(1, 3).reshape(-1, 3, 3)
+    fc0_tile = fc.reshape(-1, 1, 3)
     fc_dist = squared_norm(neig_fc - fc0_tile, dim=2)
     sigma_c = torch.sum(torch.sqrt(fc_dist + 1.0e-12)) / (fc_dist.shape[0] * fc_dist.shape[1])
 
     new_fn = fn
     for i in range(5):
         neig_fn = new_fn[f2f]
-        fn0_tile = new_fn.repeat(1, 3).reshape(-1, 3, 3)
+        #fn0_tile = new_fn.repeat(1, 3).reshape(-1, 3, 3)
+        fn0_tile = new_fn.reshape(-1, 1, 3)
         fn_dist = squared_norm(neig_fn - fn0_tile, dim=2)
         sigma_s = 0.3
         wc = torch.exp(-1.0 * fc_dist / (2 * (sigma_c ** 2)))
@@ -129,13 +143,23 @@ def fn_bnf_loss(fn: torch.Tensor, mesh: Mesh) -> torch.Tensor:
 
         new_fn = torch.sum(W * neig_fn, dim=1)
         new_fn = new_fn / (norm(new_fn, dim=1, keepdim=True) + 1.0e-12)
-
+    
+    #loss = norm_cos_loss(fn, new_fn)
     dif_fn = new_fn - fn
     dif_fn = dif_fn ** 2
     loss = torch.sum(dif_fn, dim=1)
     loss = torch.sum(loss, dim=0) / fn.shape[0]
     loss = torch.sqrt(loss + 1.0e-12)
+    
+    return loss, new_fn
 
+def test_loss(fn, g_fn):
+    g_fn = torch.from_numpy(g_fn).to(fn.device)
+    dif_fn = g_fn - fn
+    dif_fn = dif_fn ** 2
+    loss = torch.sum(dif_fn, dim=1)
+    loss = torch.sum(loss, dim=0) / fn.shape[0]
+    loss = torch.sqrt(loss + 1.0e-12)
     return loss
 
 def mesh_laplacian_loss(pred_pos: torch.Tensor, mesh: Mesh) -> torch.Tensor:

@@ -37,7 +37,7 @@ def create_dataset(file_path: str) -> Tuple[dict, Dataset]:
     """ create graph """
     np.random.seed(314)
     z1 = np.random.normal(size=(n_mesh.vs.shape[0], 16))
-    np.random.seed(159)
+    np.random.seed(314)
     z2 = np.random.normal(size=(n_mesh.fn.shape[0], 16))
     z1, z2 = torch.tensor(z1, dtype=torch.float, requires_grad=True), torch.tensor(z2, dtype=torch.float, requires_grad=True)
 
