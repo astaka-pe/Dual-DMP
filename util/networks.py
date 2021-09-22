@@ -213,6 +213,8 @@ class BigNormalNet(nn.Module):
         self.conv12 = GCNConv(h[11], h[12])
         self.conv13 = GCNConv(h[12], h[13])
         self.conv14 = GCNConv(h[13], h[14])
+        self.conv15 = GCNConv(h[14], h[15])
+        self.conv16 = GCNConv(h[15], h[16])
 
         self.linear1 = nn.Linear(h[14], h[15])
         self.linear2 = nn.Linear(h[15], h[16])
@@ -231,6 +233,8 @@ class BigNormalNet(nn.Module):
         self.bn12 = nn.BatchNorm1d(h[12], eps=1.0e-2)
         self.bn13 = nn.BatchNorm1d(h[13], eps=1.0e-2)
         self.bn14 = nn.BatchNorm1d(h[14], eps=1.0e-2)
+        self.bn15 = nn.BatchNorm1d(h[15], eps=1.0e-2)
+        self.bn16 = nn.BatchNorm1d(h[16], eps=1.0e-2)
 
         self.l_relu = nn.LeakyReLU()
         self.relu = nn.ReLU()
@@ -238,7 +242,7 @@ class BigNormalNet(nn.Module):
 
     def forward(self, data):
 
-        z2, x_pos, edge_index = data.z2.to(self.device), data.x_pos.to(self.device), data.face_index.to(self.device)
+        z2, x_norm, edge_index = data.z2.to(self.device), data.x_norm.to(self.device), data.face_index.to(self.device)
         #n2 = torch.randn(z2.shape[0], z2.shape[1]).to(self.device) * 0.01
         dx = self.l_relu(self.bn1(self.conv1(z2, edge_index)))
         dx = self.l_relu(self.bn2(self.conv2(dx, edge_index)))
@@ -254,9 +258,12 @@ class BigNormalNet(nn.Module):
         dx = self.l_relu(self.bn12(self.conv12(dx, edge_index)))
         dx = self.l_relu(self.bn13(self.conv13(dx, edge_index)))
         dx = self.l_relu(self.bn14(self.conv14(dx, edge_index)))
+        
+        dx = self.l_relu(self.bn15(self.conv15(dx, edge_index)))
+        dx = torch.tanh(self.conv16(dx, edge_index))
 
-        dx = self.l_relu(self.linear1(dx))
-        dx = torch.tanh(self.linear2(dx))
+        #dx = self.l_relu(self.linear1(dx))
+        #dx = torch.tanh(self.linear2(dx))
 
         dx_norm = norm(dx, dim=1, keepdim=True) + 1.0e-6
         x = dx / dx_norm

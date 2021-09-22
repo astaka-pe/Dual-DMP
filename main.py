@@ -75,8 +75,8 @@ set_random_seed()
 normnet = BigNormalNet(device).to(device)
 optimizer_pos = torch.optim.Adam(posnet.parameters(), lr=config.pos_lr)
 optimizer_norm = torch.optim.Adam(normnet.parameters(), lr=config.norm_lr, amsgrad=True)
-scheduler_pos = torch.optim.lr_scheduler.StepLR(optimizer_pos, step_size=500, gamma=0.8)
-scheduler_norm = torch.optim.lr_scheduler.StepLR(optimizer_norm, step_size=500, gamma=1.0)
+scheduler_pos = torch.optim.lr_scheduler.StepLR(optimizer_pos, step_size=500, gamma=1.0)
+scheduler_norm = torch.optim.lr_scheduler.StepLR(optimizer_norm, step_size=500, gamma=0.8)
 #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_norm, T_max=50)
 
 """ --- output experimental conditions --- """
@@ -179,15 +179,16 @@ for epoch in range(1, FLAGS.iter+1):
 
         norm = normnet(dataset)
         loss_norm1 = Loss.norm_cos_loss(norm, n_mesh.fn)
-        loss_norm2 = config.norm_lambda * Loss.fn_bnf_loss(norm, n_mesh)
+        loss_norm2, new_fn = Loss.fn_bnf_loss(norm, n_mesh)
+        loss_norm2 = config.norm_lambda * loss_norm2
 
         fn2 = Models.compute_fn(pos, n_mesh.faces).float()
-        #loss_pos3 = loss_norm3 = Loss.norm_cos_loss(fn2, norm)
-        loss_pos3 = Loss.masked_norm_cos_loss(fn2, norm, mask)
-        loss_norm3 = Loss.masked_norm_cos_loss(fn2, norm, mask_inv)
+        loss_pos3 = loss_norm3 = Loss.norm_cos_loss(fn2, norm)
+        #loss_pos3 = Loss.masked_norm_cos_loss(fn2, norm, mask)
+        #loss_norm3 = Loss.masked_norm_cos_loss(fn2, norm, mask_inv)
         
         loss_pos = loss_pos1 + loss_pos2 + loss_pos3
-        loss_norm = loss_norm1 + loss_norm2 + loss_norm3
+        loss_norm = loss_norm1 + loss_norm2# + loss_norm3
         loss_pos.backward(retain_graph=True)
         loss_norm.backward()
         nn.utils.clip_grad_norm_(normnet.parameters(), config.grad_crip)
@@ -233,8 +234,10 @@ for epoch in range(1, FLAGS.iter+1):
         elif FLAGS.ntype == "norm":
             mad_value = Loss.mad(norm, gt_mesh.fn)
             min_mad = min(mad_value, min_mad)
+            """
             if epoch > 200 and mad_value > 10:
                 import pdb;pdb.set_trace()
+            """
             test_rmse_norm = Loss.rmse_loss(norm, gt_mesh.fn)
             min_rmse_norm = min(min_rmse_norm, test_rmse_norm)
             writer.add_scalar("MAD", mad_value, epoch)

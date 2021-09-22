@@ -206,7 +206,7 @@ def mad(norm1: Union[np.ndarray, torch.Tensor], norm2: Union[np.ndarray, torch.T
     if type(norm2) == torch.Tensor:
         norm2 = norm2.to("cpu").detach().numpy().copy()
 
-    inner = [np.inner(norm1[i], norm2[i]) for i in range(norm1.shape[0])]
+    inner = np.sum(norm1 * norm2, 1)
     sad = np.rad2deg(np.arccos(np.clip(inner, -1.0, 1.0)))
     mad = np.sum(sad) / len(sad)
 
