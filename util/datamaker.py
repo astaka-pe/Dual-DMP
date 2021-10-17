@@ -26,6 +26,7 @@ def create_dataset(file_path: str) -> Tuple[dict, Dataset]:
     gt_file = glob.glob(file_path + '/*_gt.obj')[0]
     n_file = glob.glob(file_path + '/*_noise.obj')[0]
     s_file = glob.glob(file_path + '/*_smooth.obj')[0]
+    #s_file = glob.glob(file_path + '/*_bnf.obj')[0]
     mesh_name = gt_file.split('/')[-2]
 
     gt_mesh = Mesh(gt_file)

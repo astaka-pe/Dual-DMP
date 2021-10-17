@@ -31,7 +31,7 @@ def norm_cos_loss(pred_norm: Union[torch.Tensor, np.ndarray], real_norm: Union[t
     loss = torch.sum(cos_loss, dim=0) / len(cos_loss)
     return loss
 
-def masked_norm_cos_loss(pred_norm: Union[torch.Tensor, np.ndarray], real_norm: Union[torch.Tensor, np.ndarray], mask: np.ndarray) -> torch.Tensor:
+def weighted_norm_cos_loss(pred_norm: Union[torch.Tensor, np.ndarray], real_norm: Union[torch.Tensor, np.ndarray], mask: np.ndarray) -> torch.Tensor:
     """ cosine distance for (vertex, face) normal """
     if type(pred_norm) == np.ndarray:
         pred_norm = torch.from_numpy(pred_norm)

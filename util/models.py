@@ -157,9 +157,9 @@ def compute_nvt(mesh: Mesh) -> np.ndarray:
     fn = mesh.fn
     fc = mesh.fc
     
-    f_group = np.zeros([len(fn), 3])
-    e_strength = np.zeros([len(fn), 3])
-
+    #f_group = np.zeros([len(fn), 3])
+    fec_strength = np.zeros([len(fn), 3])
+    
     for i, f in enumerate(f2ring):
         ci = fc[i].reshape(1, -1)
         cj = fc[f]
@@ -186,21 +186,11 @@ def compute_nvt(mesh: Mesh) -> np.ndarray:
         delta = 0.5
         alpha = beta = 0.9
         
-        edge_strength = (e_vals[1] - e_vals[2]) / (e_vals[0] + 1.0e-12)
-        if edge_strength < 0.01:
-            edge_strength = 0.0
-        else:
-            edge_strength = 1.0
-        """
-        if np.dot(n_ave, e_vecs[0]) < delta:
-            edge_strength = 1.0
-        elif e_vals[2] > alpha * (e_vals[0] - e_vals[1]) and e_vals[2] > beta * (e_vals[1] - e_vals[2]):
-            edge_strength = 1.0
-        else:
-            edge_strength = (e_vals[1] - e_vals[2]) / (e_vals[0] + 1.0e-12)
-        """
-        e_strength[i] = np.array([-1.0, -1.0, edge_strength])
+        fec_strength[i][0] = e_vals[0] - e_vals[1]
+        fec_strength[i][1] = e_vals[1] - e_vals[2]
+        fec_strength[i][2] = e_vals[2]
 
+        """ create face group
         if len(e_vals) != 3:
             print("len(e_vals) < 3 !")
         elif e_vals[1] < 0.01 and e_vals[2] < 0.001:
@@ -211,5 +201,6 @@ def compute_nvt(mesh: Mesh) -> np.ndarray:
             f_group[i] = np.array([-1, 1, -1])
         else:
             f_group[i] = np.array([-1, 0, 1])
+        """
         
-    return f_group, e_strength
+    return fec_strength
