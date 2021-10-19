@@ -180,7 +180,7 @@ class Mesh:
             vf[f[2]].add(i)
         self.vf = vf
 
-        """ build v2f_matrix """
+        """ build vertex-to-face sparse matrix """
         v2f_inds = [[] for _ in range(2)]
         v2f_vals = []
         v2f_areas = [[] for _ in range(len(self.vs))]
@@ -190,8 +190,14 @@ class Mesh:
             v2f_vals += (self.fc[list(vf[i])] - self.vs[i].reshape(1, -1)).tolist()
             v2f_areas[i] = np.sum(self.fa[list(vf[i])])
         self.v2f_list = [v2f_inds, v2f_vals, v2f_areas]
+        
+        v2f_inds = torch.tensor(v2f_inds).long()
+        v2f_vals = torch.ones(v2f_inds.shape[1]).float()
+        self.v2f_mat_x = torch.sparse.FloatTensor(v2f_inds, v2f_vals, size=torch.Size([len(self.vs), len(self.faces)]))
+        self.v2f_mat_y = torch.sparse.FloatTensor(v2f_inds, v2f_vals, size=torch.Size([len(self.vs), len(self.faces)]))
+        self.v2f_mat_z = torch.sparse.FloatTensor(v2f_inds, v2f_vals, size=torch.Size([len(self.vs), len(self.faces)]))
 
-        """ build f2f_matrix """        
+        """ build face-to-face (1ring) matrix """        
         f2f = [[] for _ in range(len(self.faces))]
         f_edges = np.array([[i] * 3 for i in range(len(self.faces))])
         #f_edges_ext = [[] for _ in range(2)]
@@ -200,7 +206,7 @@ class Mesh:
             neig_f, _ = zip(*Counter(all_neig).most_common(4)[1:])
             f2f[i] = list(neig_f)
 
-        """ build 2-ring neighborhood """
+        """ build face-to-face (2ring) sparse matrix """
         self.f2f = np.array(f2f)
         f2ring = self.f2f[self.f2f].reshape(-1, 9)
         self.f2ring = [set(f) for f in f2ring]

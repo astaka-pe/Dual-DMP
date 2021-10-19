@@ -43,6 +43,25 @@ def weighted_norm_cos_loss(pred_norm: Union[torch.Tensor, np.ndarray], real_norm
     loss = torch.sum(cos_loss, dim=0) / len(cos_loss)
     return loss
 
+def pos_norm_loss(pos: Union[torch.Tensor, np.ndarray], norm: Union[torch.Tensor, np.ndarray], mesh: Mesh) -> torch.Tensor:
+    """ loss between vertex position and face normal """
+    if type(pos) == np.ndarray:
+        pos = torch.from_numpy(pos)
+    if type(norm) == np.ndarray:
+        norm = torch.from_numpy(norm).to(pos.device)
+    fc = torch.sum(pos[mesh.faces], 1) / 3.0
+    pc = pos[mesh.faces] - fc.reshape(-1, 1, 3)
+    dot_f2v = torch.abs(torch.sum(pc * norm.reshape(-1, 1, 3), 2))
+    mat_faces = torch.tensor([i // 3 for i in range(len(mesh.faces) * 3)]).to(pos.device)
+    mat_verts = torch.from_numpy(mesh.faces.reshape(-1)).to(pos.device)
+    mat_inds = torch.stack([mat_faces, mat_verts])
+    mat_vals = dot_f2v.reshape(-1)
+    f2v = torch.sparse.FloatTensor(mat_inds, mat_vals, size=torch.Size([len(mesh.faces), len(mesh.vs)]))
+    loss = torch.sum(f2v.to_dense(), 0)
+    loss = torch.sum(loss, 0) / len(mesh.vs)
+    return loss
+
+
 def bnf(fn: Union[torch.Tensor, np.ndarray], mesh: Mesh, sigma_s=0.7, sigma_c=0.2, iter=1) -> torch.Tensor:
     """ bilateral normal filtering """
     if type(fn) == torch.Tensor:

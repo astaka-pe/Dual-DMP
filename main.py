@@ -188,8 +188,10 @@ for epoch in range(1, FLAGS.iter+1):
         fn2 = Models.compute_fn(pos, n_mesh.faces).float()
 
         #loss_pos3 = loss_norm3 = Loss.norm_cos_loss(fn2, norm.detach())
-        loss_pos3 = Loss.weighted_norm_cos_loss(fn2, norm, edge_weight) * 5.0
-        loss_norm3 = Loss.weighted_norm_cos_loss(fn2, norm, surf_weight)
+        #loss_pos3 = Loss.weighted_norm_cos_loss(fn2, norm, edge_weight)
+        loss_pos3 = Loss.pos_norm_loss(pos, norm, n_mesh)
+        #loss_norm3 = Loss.weighted_norm_cos_loss(fn2, norm, surf_weight)
+        loss_norm3 = Loss.norm_cos_loss(fn2, norm)
         
         loss_pos = loss_pos1 + loss_pos2 + loss_pos3
         loss_norm = loss_norm1 + loss_norm2 + loss_norm3
