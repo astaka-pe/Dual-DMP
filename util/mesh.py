@@ -193,9 +193,7 @@ class Mesh:
         
         v2f_inds = torch.tensor(v2f_inds).long()
         v2f_vals = torch.ones(v2f_inds.shape[1]).float()
-        self.v2f_mat_x = torch.sparse.FloatTensor(v2f_inds, v2f_vals, size=torch.Size([len(self.vs), len(self.faces)]))
-        self.v2f_mat_y = torch.sparse.FloatTensor(v2f_inds, v2f_vals, size=torch.Size([len(self.vs), len(self.faces)]))
-        self.v2f_mat_z = torch.sparse.FloatTensor(v2f_inds, v2f_vals, size=torch.Size([len(self.vs), len(self.faces)]))
+        self.v2f_mat = torch.sparse.FloatTensor(v2f_inds, v2f_vals, size=torch.Size([len(self.vs), len(self.faces)]))
 
         """ build face-to-face (1ring) matrix """        
         f2f = [[] for _ in range(len(self.faces))]

@@ -39,6 +39,7 @@ parser.add_argument('--norm_optim', type=str, default='Adam')
 parser.add_argument('--iter', type=int, default=5000)
 parser.add_argument('--pos_lambda', type=float, default=1.4)
 parser.add_argument('--norm_lambda', type=float, default=0.5)
+parser.add_argument('--pn_lambda', type=float, default=1.0)
 parser.add_argument('--gpu', type=int, default=0)
 parser.add_argument('--ntype', type=str, default='hybrid')
 FLAGS = parser.parse_args()
@@ -66,6 +67,7 @@ wandb.init(project="dmp-adv", group=mesh_name, job_type=FLAGS.ntype, name=dt_now
                "grad_crip": 0.8,
                "pos_lambda": FLAGS.pos_lambda,
                "norm_lambda": FLAGS.norm_lambda,
+               "pn_lambda": FLAGS.pn_lambda,
                "norm_optim": FLAGS.norm_optim
            })
 config = wandb.config
@@ -187,14 +189,15 @@ for epoch in range(1, FLAGS.iter+1):
 
         fn2 = Models.compute_fn(pos, n_mesh.faces).float()
 
-        #loss_pos3 = loss_norm3 = Loss.norm_cos_loss(fn2, norm.detach())
+        #loss_pos3 = loss_norm3 = Loss.norm_cos_loss(fn2, norm)
         #loss_pos3 = Loss.weighted_norm_cos_loss(fn2, norm, edge_weight)
-        loss_pos3 = Loss.pos_norm_loss(pos, norm, n_mesh)
+        loss_pos3 = config.pn_lambda * Loss.pos_norm_loss(pos, norm, n_mesh)
+        #loss_pos3 = 5.0 * Loss.weighted_pos_norm_loss(pos, norm, edge_weight, n_mesh)
         #loss_norm3 = Loss.weighted_norm_cos_loss(fn2, norm, surf_weight)
         loss_norm3 = Loss.norm_cos_loss(fn2, norm)
         
         loss_pos = loss_pos1 + loss_pos2 + loss_pos3
-        loss_norm = loss_norm1 + loss_norm2 + loss_norm3
+        loss_norm = loss_norm1 + loss_norm2 #+ loss_norm3
         loss_pos.backward(retain_graph=True)
         loss_norm.backward()
         nn.utils.clip_grad_norm_(normnet.parameters(), config.grad_crip)

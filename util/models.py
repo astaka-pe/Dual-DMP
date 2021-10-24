@@ -151,7 +151,7 @@ def uv2xyz(uv):
     xyz = torch.stack([x, y, z]).T
     return xyz
 
-def compute_nvt(mesh: Mesh) -> np.ndarray:
+def compute_nvt(mesh: Mesh, alpha=0.2, beta=0.2, delta=0.3) -> np.ndarray:
     f2ring = mesh.f2ring
     fa = mesh.fa
     fn = mesh.fn
@@ -183,12 +183,10 @@ def compute_nvt(mesh: Mesh) -> np.ndarray:
         e_vals = np.linalg.eig(Ti)[0][order]
         e_vecs = np.linalg.eig(Ti)[1][:, order]
         n_ave = np.sum(mu * nj_prime, 0)
-        delta = 0.5
-        alpha = beta = 0.9
         
-        fec_strength[i][0] = e_vals[0] - e_vals[1]
-        fec_strength[i][1] = e_vals[1] - e_vals[2]
-        fec_strength[i][2] = e_vals[2]
+        fec_strength[i][0] = e_vals[0] - e_vals[1] / np.sum(e_vals)
+        fec_strength[i][1] = e_vals[1] - e_vals[2] / np.sum(e_vals)
+        fec_strength[i][2] = e_vals[2] / np.sum(e_vals)
 
         """ create face group
         if len(e_vals) != 3:

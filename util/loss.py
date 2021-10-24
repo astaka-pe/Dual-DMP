@@ -51,14 +51,38 @@ def pos_norm_loss(pos: Union[torch.Tensor, np.ndarray], norm: Union[torch.Tensor
         norm = torch.from_numpy(norm).to(pos.device)
     fc = torch.sum(pos[mesh.faces], 1) / 3.0
     pc = pos[mesh.faces] - fc.reshape(-1, 1, 3)
-    dot_f2v = torch.abs(torch.sum(pc * norm.reshape(-1, 1, 3), 2))
-    mat_faces = torch.tensor([i // 3 for i in range(len(mesh.faces) * 3)]).to(pos.device)
-    mat_verts = torch.from_numpy(mesh.faces.reshape(-1)).to(pos.device)
-    mat_inds = torch.stack([mat_faces, mat_verts])
+    dot_f2v = torch.abs(torch.sum(pc * norm.reshape(-1, 1, 3), dim=2))
+    #mat_faces = torch.tensor([i // 3 for i in range(len(mesh.faces) * 3)]).to(pos.device)
+    #mat_verts = torch.from_numpy(mesh.faces.reshape(-1)).to(pos.device)
+    #mat_rows = torch.zeros(len(mat_verts)).long().to(pos.device)
+    #mat_inds = torch.stack([mat_rows, mat_verts])
     mat_vals = dot_f2v.reshape(-1)
-    f2v = torch.sparse.FloatTensor(mat_inds, mat_vals, size=torch.Size([len(mesh.faces), len(mesh.vs)]))
-    loss = torch.sum(f2v.to_dense(), 0)
-    loss = torch.sum(loss, 0) / len(mesh.vs)
+    """
+    import pdb;pdb.set_trace()
+    f2v = torch.sparse.FloatTensor(mat_inds, mat_vals, size=torch.Size([1, len(mesh.vs)]))
+    loss = torch.sum(f2v.to_dense()) / len(mesh.vs)
+    """
+    loss = torch.sum(mat_vals) / len(mesh.vs)
+    return loss
+
+def weighted_pos_norm_loss(pos: Union[torch.Tensor, np.ndarray], norm: Union[torch.Tensor, np.ndarray], weight: np.ndarray, mesh: Mesh) -> torch.Tensor:
+    """ loss between vertex position and face normal """
+    if type(pos) == np.ndarray:
+        pos = torch.from_numpy(pos)
+    if type(norm) == np.ndarray:
+        norm = torch.from_numpy(norm).to(pos.device)
+    fc = torch.sum(pos[mesh.faces], 1) / 3.0
+    pc = pos[mesh.faces] - fc.reshape(-1, 1, 3)
+    dot_f2v = torch.abs(torch.sum(pc * norm.reshape(-1, 1, 3), dim=2))
+    weight = torch.from_numpy(weight).to(pos.device)
+    dot_f2v = dot_f2v * weight.reshape(-1, 1)
+    mat_verts = torch.from_numpy(mesh.faces.reshape(-1)).to(pos.device)
+    mat_rows = torch.zeros(len(mat_verts)).long().to(pos.device)
+    mat_inds = torch.stack([mat_rows, mat_verts])
+    mat_vals = dot_f2v.reshape(-1)
+    
+    f2v = torch.sparse.FloatTensor(mat_inds, mat_vals, size=torch.Size([1, len(mesh.vs)]))
+    loss = torch.sum(f2v.to_dense()) / len(mesh.vs)
     return loss
 
 
