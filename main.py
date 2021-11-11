@@ -51,12 +51,13 @@ for k, v in vars(FLAGS).items():
 mesh_dic, dataset = Datamaker.create_dataset(FLAGS.input)
 gt_file, n_file, s_file, mesh_name = mesh_dic["gt_file"], mesh_dic["n_file"], mesh_dic["s_file"], mesh_dic["mesh_name"]
 gt_mesh, n_mesh, o1_mesh, s_mesh = mesh_dic["gt_mesh"], mesh_dic["n_mesh"], mesh_dic["o1_mesh"], mesh_dic["s_mesh"]
+"""
 _, bnf_mesh = Loss.bnf(n_mesh.fn, n_mesh, sigma_s=0.7, iter=10)
 fec_str = Models.compute_nvt(bnf_mesh)
 
 surf_weight = fec_str[:, 0]# * 0.2
 edge_weight = fec_str[:, 1]
-
+"""
 dt_now = datetime.datetime.now()
 
 """ --- hyper parameters --- """
@@ -189,12 +190,8 @@ for epoch in range(1, FLAGS.iter+1):
 
         fn2 = Models.compute_fn(pos, n_mesh.faces).float()
 
-        #loss_pos3 = loss_norm3 = Loss.norm_cos_loss(fn2, norm)
-        #loss_pos3 = Loss.weighted_norm_cos_loss(fn2, norm, edge_weight)
         loss_pos3 = config.pn_lambda * Loss.pos_norm_loss(pos, norm, n_mesh)
-        #loss_pos3 = 5.0 * Loss.weighted_pos_norm_loss(pos, norm, edge_weight, n_mesh)
-        #loss_norm3 = Loss.weighted_norm_cos_loss(fn2, norm, surf_weight)
-        loss_norm3 = Loss.norm_cos_loss(fn2, norm)
+        #loss_norm3 = Loss.norm_cos_loss(fn2, norm)
         
         loss_pos = loss_pos1 + loss_pos2 + loss_pos3
         loss_norm = loss_norm1 + loss_norm2 #+ loss_norm3
@@ -212,9 +209,8 @@ for epoch in range(1, FLAGS.iter+1):
         writer.add_scalar("pos", loss_pos, epoch)
         writer.add_scalar("norm1", loss_norm1, epoch)
         writer.add_scalar("norm2", loss_norm2, epoch)
-        writer.add_scalar("norm3", loss_norm3, epoch)
         writer.add_scalar("norm", loss_norm, epoch)
-        wandb.log({"pos": loss_pos, "pos1": loss_pos1, "pos2": loss_pos2, "pos3": loss_pos3, "norm": loss_norm, "norm1": loss_norm1, "norm2": loss_norm2, "norm3": loss_norm3})
+        wandb.log({"pos": loss_pos, "pos1": loss_pos1, "pos2": loss_pos2, "pos3": loss_pos3, "norm": loss_norm, "norm1": loss_norm1, "norm2": loss_norm2})
 
     if epoch % 10 == 0:
         if FLAGS.ntype == "pos":

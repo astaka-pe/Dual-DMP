@@ -164,10 +164,10 @@ def fn_bnf_loss(fn: torch.Tensor, mesh: Mesh) -> torch.Tensor:
     fc = torch.from_numpy(mesh.fc).float().to(fn.device)
     fa = torch.from_numpy(mesh.fa).float().to(fn.device)
     f2f = torch.from_numpy(mesh.f2f).long().to(fn.device)
+    no_neig = 1.0 * (f2f != -1)
     
     neig_fc = fc[f2f]
-    neig_fa = fa[f2f]
-    #fc0_tile = fc.repeat(1, 3).reshape(-1, 3, 3)
+    neig_fa = fa[f2f] * no_neig
     fc0_tile = fc.reshape(-1, 1, 3)
     fc_dist = squared_norm(neig_fc - fc0_tile, dim=2)
     sigma_c = torch.sum(torch.sqrt(fc_dist + 1.0e-12)) / (fc_dist.shape[0] * fc_dist.shape[1])
@@ -175,7 +175,6 @@ def fn_bnf_loss(fn: torch.Tensor, mesh: Mesh) -> torch.Tensor:
     new_fn = fn
     for i in range(5):
         neig_fn = new_fn[f2f]
-        #fn0_tile = new_fn.repeat(1, 3).reshape(-1, 3, 3)
         fn0_tile = new_fn.reshape(-1, 1, 3)
         fn_dist = squared_norm(neig_fn - fn0_tile, dim=2)
         sigma_s = 0.3
@@ -186,8 +185,7 @@ def fn_bnf_loss(fn: torch.Tensor, mesh: Mesh) -> torch.Tensor:
 
         new_fn = torch.sum(W * neig_fn, dim=1)
         new_fn = new_fn / (norm(new_fn, dim=1, keepdim=True) + 1.0e-12)
-    
-    #loss = norm_cos_loss(fn, new_fn)
+
     dif_fn = new_fn - fn
     dif_fn = dif_fn ** 2
     loss = torch.sum(dif_fn, dim=1)
@@ -207,6 +205,7 @@ def test_loss(fn, g_fn):
 
 def mesh_laplacian_loss(pred_pos: torch.Tensor, mesh: Mesh) -> torch.Tensor:
     """ simple laplacian for output meshes """
+    """
     ve = mesh.ve
     edges = mesh.edges
     pred_pos = pred_pos.T
@@ -239,6 +238,12 @@ def mesh_laplacian_loss(pred_pos: torch.Tensor, mesh: Mesh) -> torch.Tensor:
     #lap_vals = torch.sum(lap_vals * lap_vals, dim=1)
     lap_loss = torch.sum(lap_vals) / torch.sum(nnz_mask)
     #lap_loss = torch.sqrt(lap_loss + 1.0e-12)
+    """
+    v2v = mesh.v2v_mat.to(pred_pos.device)
+    v_dims = mesh.v_dims.reshape(-1, 1).to(pred_pos.device)
+    lap_pos = torch.sparse.mm(v2v, pred_pos) / v_dims
+    lap_diff = torch.sqrt(torch.sum((pred_pos - lap_pos) ** 2, dim=1) + 1.0e-12)
+    lap_loss = torch.sum(lap_diff) / len(lap_diff)
 
     return lap_loss
 

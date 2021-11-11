@@ -15,6 +15,7 @@ class Mesh:
         self.build_gemm() #self.edges, self.ve
         self.compute_vert_normals()
         #self.compute_fn_sphere()
+        self.build_v2v()
         self.build_vf()
         if build_mat:
             self.build_uni_lap()
@@ -103,9 +104,9 @@ class Mesh:
 
     def compute_face_normals(self):
         face_normals = np.cross(self.vs[self.faces[:, 1]] - self.vs[self.faces[:, 0]], self.vs[self.faces[:, 2]] - self.vs[self.faces[:, 0]])
-        norm = np.sqrt(np.sum(np.square(face_normals), 1))
+        norm = np.linalg.norm(face_normals, axis=1, keepdims=True) + 1e-24
         face_areas = 0.5 * np.sqrt((face_normals**2).sum(axis=1))
-        face_normals /= np.tile(norm, (3, 1)).T
+        face_normals /= norm
         self.fn, self.fa = face_normals, face_areas
 
     def compute_vert_normals(self):
@@ -196,15 +197,26 @@ class Mesh:
         self.v2f_mat = torch.sparse.FloatTensor(v2f_inds, v2f_vals, size=torch.Size([len(self.vs), len(self.faces)]))
 
         """ build face-to-face (1ring) matrix """        
-        f2f = [[] for _ in range(len(self.faces))]
         f_edges = np.array([[i] * 3 for i in range(len(self.faces))])
-        #f_edges_ext = [[] for _ in range(2)]
+        f2f = [[] for _ in range(len(self.faces))]
+        self.f_edges = [[] for _ in range(2)]
         for i, f in enumerate(self.faces):
             all_neig = list(vf[f[0]]) + list(vf[f[1]]) + list(vf[f[2]])
-            neig_f, _ = zip(*Counter(all_neig).most_common(4)[1:])
-            f2f[i] = list(neig_f)
+            one_neig = np.array(list(Counter(all_neig).values())) == 2
+            f2f_i = np.array(list(Counter(all_neig).keys()))[one_neig].tolist()
+            self.f_edges[0] += len(f2f_i) * [i]
+            self.f_edges[1] += f2f_i
+            f2f[i] = f2f_i + (3 - len(f2f_i)) * [-1]
 
-        """ build face-to-face (2ring) sparse matrix """
+        self.f2f = np.array(f2f)
+        self.f_edges = np.array(self.f_edges)
+        """
+        f2f_inds = torch.from_numpy(self.f_edges).long()
+        f2f_vals = torch.ones(f2f_inds.shape[1]).float()
+        self.f2f_mat = torch.sparse.FloatTensor(v2f_inds, v2f_vals, size=torch.Size([len(self.faces), len(self.faces)]))
+        """
+        
+        """ build face-to-face (2ring) sparse matrix 
         self.f2f = np.array(f2f)
         f2ring = self.f2f[self.f2f].reshape(-1, 9)
         self.f2ring = [set(f) for f in f2ring]
@@ -215,7 +227,16 @@ class Mesh:
         #mat_vals = torch.ones(mat_inds.shape[1]).float()
         mat_vals = torch.from_numpy(self.fa[self.f_edges[0]]).float()
         self.f2f_mat = torch.sparse.FloatTensor(mat_inds, mat_vals, size=torch.Size([len(self.faces), len(self.faces)]))
-        
+        """
+    def build_v2v(self):
+        """ compute adjacent matrix """
+        edges = self.edges
+        v2v_inds = edges.T
+        v2v_inds = torch.from_numpy(np.concatenate([v2v_inds, v2v_inds[[1, 0]]], axis=1)).long()
+        v2v_vals = torch.ones(v2v_inds.shape[1]).float()
+        self.v2v_mat = torch.sparse.FloatTensor(v2v_inds, v2v_vals, size=torch.Size([len(self.vs), len(self.vs)]))
+        self.v_dims = torch.sum(self.v2v_mat.to_dense(), axis=1)
+
     def build_mesh_lap(self):
         """compute mesh laplacian matrix"""
         vs = self.vs

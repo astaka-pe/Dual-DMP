@@ -23,13 +23,17 @@ class Dataset:
 def create_dataset(file_path: str) -> Tuple[dict, Dataset]:
     """ create mesh """
     mesh_dic = {}
-    gt_file = glob.glob(file_path + '/*_gt.obj')[0]
     n_file = glob.glob(file_path + '/*_noise.obj')[0]
     s_file = glob.glob(file_path + '/*_smooth.obj')[0]
-    #s_file = glob.glob(file_path + '/*_bnf.obj')[0]
-    mesh_name = gt_file.split('/')[-2]
+    mesh_name = n_file.split('/')[-2]
 
-    gt_mesh = Mesh(gt_file)
+    gt_file = glob.glob(file_path + '/*_gt.obj')
+    if len(gt_file) != 0:
+        gt_file = gt_file[0]
+        gt_mesh = Mesh(gt_file)
+    else:
+        gt_mesh = None
+
     n_mesh = Mesh(n_file)
     o1_mesh = Mesh(n_file)
     #o2_mesh = Mesh(n_file)
