@@ -205,40 +205,6 @@ def test_loss(fn, g_fn):
 
 def mesh_laplacian_loss(pred_pos: torch.Tensor, mesh: Mesh) -> torch.Tensor:
     """ simple laplacian for output meshes """
-    """
-    ve = mesh.ve
-    edges = mesh.edges
-    pred_pos = pred_pos.T
-    sub_mesh_vv = [edges[v_e, :].reshape(-1) for v_e in ve]
-    sub_mesh_vv = [set(vv.tolist()).difference(set([i])) for i, vv in enumerate(sub_mesh_vv)]
-
-    num_verts = pred_pos.size(1)
-    mat_rows = [np.array([i] * len(vv), dtype=np.int64) for i, vv in enumerate(sub_mesh_vv)]
-    mat_rows = np.concatenate(mat_rows)
-    mat_cols = [np.array(list(vv), dtype=np.int64) for vv in sub_mesh_vv]
-    mat_cols = np.concatenate(mat_cols)
-
-    mat_rows = torch.from_numpy(mat_rows).long().to(pred_pos.device)
-    mat_cols = torch.from_numpy(mat_cols).long().to(pred_pos.device)
-    mat_vals = torch.ones_like(mat_rows).float()
-    neig_mat = torch.sparse.FloatTensor(torch.stack([mat_rows, mat_cols], dim=0),
-                                        mat_vals,
-                                        size=torch.Size([num_verts, num_verts]))
-    pred_pos = pred_pos.T
-    sum_neigs = torch.sparse.mm(neig_mat, pred_pos)
-    sum_count = torch.sparse.mm(neig_mat, torch.ones((num_verts, 1)).type_as(pred_pos))
-    nnz_mask = (sum_count != 0).squeeze()
-    #lap_vals = sum_count[nnz_mask, :] * pred_pos[nnz_mask, :] - sum_neigs[nnz_mask, :]
-    if len(torch.where(sum_count[:, 0]==0)[0]) == 0:
-        lap_vals = pred_pos[nnz_mask, :] - sum_neigs[nnz_mask, :] / sum_count[nnz_mask, :]
-    else:
-        print("[ERROR] Isorated vertices exist")
-        return False
-    lap_vals = torch.sqrt(torch.sum(lap_vals * lap_vals, dim=1) + 1.0e-12)
-    #lap_vals = torch.sum(lap_vals * lap_vals, dim=1)
-    lap_loss = torch.sum(lap_vals) / torch.sum(nnz_mask)
-    #lap_loss = torch.sqrt(lap_loss + 1.0e-12)
-    """
     v2v = mesh.v2v_mat.to(pred_pos.device)
     v_dims = mesh.v_dims.reshape(-1, 1).to(pred_pos.device)
     lap_pos = torch.sparse.mm(v2v, pred_pos) / v_dims
