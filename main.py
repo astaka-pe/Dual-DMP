@@ -51,13 +51,6 @@ for k, v in vars(FLAGS).items():
 mesh_dic, dataset = Datamaker.create_dataset(FLAGS.input)
 gt_file, n_file, s_file, mesh_name = mesh_dic["gt_file"], mesh_dic["n_file"], mesh_dic["s_file"], mesh_dic["mesh_name"]
 gt_mesh, n_mesh, o1_mesh, s_mesh = mesh_dic["gt_mesh"], mesh_dic["n_mesh"], mesh_dic["o1_mesh"], mesh_dic["s_mesh"]
-"""
-_, bnf_mesh = Loss.bnf(n_mesh.fn, n_mesh, sigma_s=0.7, iter=10)
-fec_str = Models.compute_nvt(bnf_mesh)
-
-surf_weight = fec_str[:, 0]# * 0.2
-edge_weight = fec_str[:, 1]
-"""
 dt_now = datetime.datetime.now()
 
 """ --- hyper parameters --- """
@@ -77,9 +70,9 @@ config = wandb.config
 device = torch.device('cuda:' + str(FLAGS.gpu) if torch.cuda.is_available() else 'cpu')
 set_random_seed()
 posnet = PosNet(device).to(device)
-#normnet = NormalNet(device).to(device)
 set_random_seed()
-normnet = BigNormalNet(device).to(device)
+normnet = NormalNet(device).to(device)
+#normnet = BigNormalNet(device).to(device)
 optimizer_pos = torch.optim.Adam(posnet.parameters(), lr=config.pos_lr)
 
 norm_optimizers = {}
@@ -92,7 +85,6 @@ norm_optimizers["AdamW"] = torch.optim.AdamW(normnet.parameters(), lr=config.nor
 optimizer_norm = norm_optimizers[FLAGS.norm_optim]
 scheduler_pos = torch.optim.lr_scheduler.StepLR(optimizer_pos, step_size=500, gamma=1.0)
 scheduler_norm = torch.optim.lr_scheduler.StepLR(optimizer_norm, step_size=500, gamma=1.0)
-#scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_norm, T_max=50)
 
 """ --- output experimental conditions --- """
 log_dir = "./logs/" + mesh_name + dt_now.isoformat()
@@ -113,7 +105,6 @@ min_rmse_pos = 1000
 init_mad = Loss.mad(n_mesh.fn, gt_mesh.fn)
 init_vn_loss = Loss.rmse_loss(n_mesh.vn, gt_mesh.vn)
 init_fn_loss = Loss.rmse_loss(n_mesh.fn, gt_mesh.fn)
-past_norm2 = 1000 #TODO: Remove this!
 print("init_mad: ", init_mad, " init_vn_loss: ", float(init_vn_loss), " init_fn_loss: ", float(init_fn_loss))
 
 """ --- learning loop --- """
@@ -156,22 +147,6 @@ for epoch in range(1, FLAGS.iter+1):
         writer.add_scalar("norm2", loss_norm2, epoch)
         writer.add_scalar("norm", loss_norm, epoch)
         wandb.log({"norm": loss_norm, "norm1": loss_norm1, "norm2": loss_norm2})
-
-    elif FLAGS.ntype == "sphere":
-        normnet.train()
-        optimizer_norm.zero_grad()
-        norm = normnet(dataset)
-
-        loss_norm1 = l1loss(norm, torch.tensor(n_mesh.fn_uv).float().to(device))
-        loss_norm2 = 5.0 * Loss.fn_lap_loss(norm, n_mesh.f2f_mat)
-        #loss_norm2 = 10.0 * Loss.fn_bilap_loss(norm, n_mesh.fc, n_mesh.f2f)
-        loss_norm = loss_norm1 + loss_norm2
-        loss_norm.backward()
-        optimizer_norm.step()
-
-        writer.add_scalar("norm1", loss_norm1, epoch)
-        writer.add_scalar("norm2", loss_norm2, epoch)
-        writer.add_scalar("norm", loss_norm, epoch)
     
     elif FLAGS.ntype == "hybrid":
         posnet.train()
@@ -191,10 +166,9 @@ for epoch in range(1, FLAGS.iter+1):
         fn2 = Models.compute_fn(pos, n_mesh.faces).float()
 
         loss_pos3 = config.pn_lambda * Loss.pos_norm_loss(pos, norm, n_mesh)
-        #loss_norm3 = Loss.norm_cos_loss(fn2, norm)
         
         loss_pos = loss_pos1 + loss_pos2 + loss_pos3
-        loss_norm = loss_norm1 + loss_norm2 #+ loss_norm3
+        loss_norm = loss_norm1 + loss_norm2
         loss_pos.backward(retain_graph=True)
         loss_norm.backward()
         nn.utils.clip_grad_norm_(normnet.parameters(), config.grad_crip)
@@ -239,10 +213,6 @@ for epoch in range(1, FLAGS.iter+1):
         elif FLAGS.ntype == "norm":
             mad_value = Loss.mad(norm, gt_mesh.fn)
             min_mad = min(mad_value, min_mad)
-            """
-            if epoch > 200 and mad_value > 10:
-                import pdb;pdb.set_trace()
-            """
             test_rmse_norm = Loss.rmse_loss(norm, gt_mesh.fn)
             min_rmse_norm = min(min_rmse_norm, test_rmse_norm)
             writer.add_scalar("MAD", mad_value, epoch)
@@ -252,13 +222,6 @@ for epoch in range(1, FLAGS.iter+1):
             Mesh.save_as_ply(gt_mesh, "datasets/" + mesh_name + "/output/" + str(epoch) + "_norm_bnf.ply", new_fn.to("cpu").detach().numpy().copy())
             print("mad_value: ", mad_value, "min_mad: ", min_mad)
             print("test_rmse: ", float(test_rmse_norm), "min_rmse: ", float(min_rmse_norm))
-
-        elif FLAGS.ntype == "sphere":
-            normal = Models.uv2xyz(norm)
-            test_rmse = Loss.rmse_loss(normal, gt_mesh.fn)
-            min_rmse = min(min_rmse, test_rmse)
-            print("test_rmse: ", float(test_rmse), "min_rmse: ", float(min_rmse))
-            writer.add_scalar("test_norm", test_rmse, epoch)
 
         elif FLAGS.ntype == "hybrid":
             o1_mesh.vs = pos.to('cpu').detach().numpy().copy()

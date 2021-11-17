@@ -85,7 +85,7 @@ class Mesh:
         self.sides = np.array(sides, dtype=np.int64)
         self.edges_count = edges_count
         # lots of DS for loss
-
+        """
         self.nvs, self.nvsi, self.nvsin, self.ve_in = [], [], [], []
         for i, e in enumerate(self.ve):
             self.nvs.append(len(e))
@@ -101,6 +101,7 @@ class Mesh:
         self.max_nvs = max(self.nvs)
         self.nvs = torch.Tensor(self.nvs).to(self.device).float()
         self.edge2key = edge2key
+        """
 
     def compute_face_normals(self):
         face_normals = np.cross(self.vs[self.faces[:, 1]] - self.vs[self.faces[:, 0]], self.vs[self.faces[:, 2]] - self.vs[self.faces[:, 0]])
