@@ -4,6 +4,7 @@ from functools import reduce
 from collections import Counter
 import scipy as sp
 from sklearn.preprocessing import normalize
+from util.mesh import Mesh
 
 def build_div(n_mesh, vn):
     vs = n_mesh.vs
@@ -149,3 +150,55 @@ def uv2xyz(uv):
     z = torch.cos(v)
     xyz = torch.stack([x, y, z]).T
     return xyz
+
+def compute_nvt(mesh: Mesh, alpha=0.2, beta=0.2, delta=0.3) -> np.ndarray:
+    f2ring = mesh.f2ring
+    fa = mesh.fa
+    fn = mesh.fn
+    fc = mesh.fc
+    
+    #f_group = np.zeros([len(fn), 3])
+    fec_strength = np.zeros([len(fn), 3])
+    
+    for i, f in enumerate(f2ring):
+        ci = fc[i].reshape(1, -1)
+        cj = fc[f]
+        nj = fn[f]
+        """ (a cross b) cross a = (a dot a)b - (b dot a)a """
+        a_a = np.sum((cj - ci) ** 2, 1).reshape(-1, 1)
+        b_a = np.sum((cj - ci) * nj, 1).reshape(-1, 1)
+        wj = a_a * nj - b_a * (cj - ci)
+        wj = normalize(wj, norm="l2", axis=1)
+
+        nw = np.sum(nj * wj, 1).reshape(-1, 1)
+        nj_prime = 2 * nw * wj - nj
+        
+        am = np.max(fa[f]) + 1.0e-12
+        aj = fa[f]
+        cji_norm = np.linalg.norm(cj - ci, axis=1)
+        sigma = np.mean(cji_norm) + 1.0e-12
+        mu = (aj / am * np.exp(-cji_norm / sigma)).reshape(-1, 1)
+        Ti = np.matmul(nj_prime.T, (nj_prime * mu))
+        order = np.argsort(np.linalg.eig(Ti)[0])[::-1]
+        e_vals = np.linalg.eig(Ti)[0][order]
+        e_vecs = np.linalg.eig(Ti)[1][:, order]
+        n_ave = np.sum(mu * nj_prime, 0)
+        
+        fec_strength[i][0] = e_vals[0] - e_vals[1] / np.sum(e_vals)
+        fec_strength[i][1] = e_vals[1] - e_vals[2] / np.sum(e_vals)
+        fec_strength[i][2] = e_vals[2] / np.sum(e_vals)
+
+        """ create face group
+        if len(e_vals) != 3:
+            print("len(e_vals) < 3 !")
+        elif e_vals[1] < 0.01 and e_vals[2] < 0.001:
+            f_group[i] = np.array([-1, -1, 1])
+        elif e_vals[1] > 0.01 and e_vals[2] < 0.1:
+            f_group[i] = np.array([0, 1, -1])
+        elif e_vals[2] > 0.1:
+            f_group[i] = np.array([-1, 1, -1])
+        else:
+            f_group[i] = np.array([-1, 0, 1])
+        """
+        
+    return fec_strength

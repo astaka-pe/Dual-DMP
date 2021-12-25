@@ -23,12 +23,17 @@ class Dataset:
 def create_dataset(file_path: str) -> Tuple[dict, Dataset]:
     """ create mesh """
     mesh_dic = {}
-    gt_file = glob.glob(file_path + '/*_gt.obj')[0]
     n_file = glob.glob(file_path + '/*_noise.obj')[0]
     s_file = glob.glob(file_path + '/*_smooth.obj')[0]
-    mesh_name = gt_file.split('/')[-2]
+    mesh_name = n_file.split('/')[-2]
 
-    gt_mesh = Mesh(gt_file)
+    gt_file = glob.glob(file_path + '/*_gt.obj')
+    if len(gt_file) != 0:
+        gt_file = gt_file[0]
+        gt_mesh = Mesh(gt_file)
+    else:
+        gt_mesh = None
+
     n_mesh = Mesh(n_file)
     o1_mesh = Mesh(n_file)
     #o2_mesh = Mesh(n_file)
@@ -37,7 +42,7 @@ def create_dataset(file_path: str) -> Tuple[dict, Dataset]:
     """ create graph """
     np.random.seed(314)
     z1 = np.random.normal(size=(n_mesh.vs.shape[0], 16))
-    np.random.seed(159)
+    np.random.seed(314)
     z2 = np.random.normal(size=(n_mesh.fn.shape[0], 16))
     z1, z2 = torch.tensor(z1, dtype=torch.float, requires_grad=True), torch.tensor(z2, dtype=torch.float, requires_grad=True)
 

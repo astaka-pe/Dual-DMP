@@ -14,7 +14,8 @@ class Mesh:
         self.device = 'cpu'
         self.build_gemm() #self.edges, self.ve
         self.compute_vert_normals()
-        self.compute_fn_sphere()
+        #self.compute_fn_sphere()
+        self.build_v2v()
         self.build_vf()
         if build_mat:
             self.build_uni_lap()
@@ -84,7 +85,7 @@ class Mesh:
         self.sides = np.array(sides, dtype=np.int64)
         self.edges_count = edges_count
         # lots of DS for loss
-
+        """
         self.nvs, self.nvsi, self.nvsin, self.ve_in = [], [], [], []
         for i, e in enumerate(self.ve):
             self.nvs.append(len(e))
@@ -100,12 +101,13 @@ class Mesh:
         self.max_nvs = max(self.nvs)
         self.nvs = torch.Tensor(self.nvs).to(self.device).float()
         self.edge2key = edge2key
+        """
 
     def compute_face_normals(self):
         face_normals = np.cross(self.vs[self.faces[:, 1]] - self.vs[self.faces[:, 0]], self.vs[self.faces[:, 2]] - self.vs[self.faces[:, 0]])
-        norm = np.sqrt(np.sum(np.square(face_normals), 1))
+        norm = np.linalg.norm(face_normals, axis=1, keepdims=True) + 1e-24
         face_areas = 0.5 * np.sqrt((face_normals**2).sum(axis=1))
-        face_normals /= np.tile(norm, (3, 1)).T
+        face_normals /= norm
         self.fn, self.fa = face_normals, face_areas
 
     def compute_vert_normals(self):
@@ -179,35 +181,63 @@ class Mesh:
             vf[f[1]].add(i)
             vf[f[2]].add(i)
         self.vf = vf
+
+        """ build vertex-to-face sparse matrix """
+        v2f_inds = [[] for _ in range(2)]
+        v2f_vals = []
+        v2f_areas = [[] for _ in range(len(self.vs))]
+        for i in range(len(vf)):
+            v2f_inds[1] += list(vf[i])
+            v2f_inds[0] += [i] * len(vf[i])
+            v2f_vals += (self.fc[list(vf[i])] - self.vs[i].reshape(1, -1)).tolist()
+            v2f_areas[i] = np.sum(self.fa[list(vf[i])])
+        self.v2f_list = [v2f_inds, v2f_vals, v2f_areas]
         
-        f2f = [[] for _ in range(len(self.faces))]
+        v2f_inds = torch.tensor(v2f_inds).long()
+        v2f_vals = torch.ones(v2f_inds.shape[1]).float()
+        self.v2f_mat = torch.sparse.FloatTensor(v2f_inds, v2f_vals, size=torch.Size([len(self.vs), len(self.faces)]))
+
+        """ build face-to-face (1ring) matrix """        
         f_edges = np.array([[i] * 3 for i in range(len(self.faces))])
-        #f_edges_ext = [[] for _ in range(2)]
+        f2f = [[] for _ in range(len(self.faces))]
+        self.f_edges = [[] for _ in range(2)]
         for i, f in enumerate(self.faces):
             all_neig = list(vf[f[0]]) + list(vf[f[1]]) + list(vf[f[2]])
-            neig_f, _ = zip(*Counter(all_neig).most_common(4)[1:])
-            #neig_f_ext, _ = zip(*Counter(all_neig).most_common()[1:])
-            f2f[i] = list(neig_f)
-            #f_edges_ext[0] = f_edges_ext[0] + list(neig_f_ext)
-            #f_edges_ext[1] = f_edges_ext[1] + [i] * len(neig_f_ext)
+            one_neig = np.array(list(Counter(all_neig).values())) == 2
+            f2f_i = np.array(list(Counter(all_neig).keys()))[one_neig].tolist()
+            self.f_edges[0] += len(f2f_i) * [i]
+            self.f_edges[1] += f2f_i
+            f2f[i] = f2f_i + (3 - len(f2f_i)) * [-1]
 
         self.f2f = np.array(f2f)
-        #f_edges_ext = np.array(f_edges_ext)
+        self.f_edges = np.array(self.f_edges)
+        """
+        f2f_inds = torch.from_numpy(self.f_edges).long()
+        f2f_vals = torch.ones(f2f_inds.shape[1]).float()
+        self.f2f_mat = torch.sparse.FloatTensor(v2f_inds, v2f_vals, size=torch.Size([len(self.faces), len(self.faces)]))
+        """
+        
+        """ build face-to-face (2ring) sparse matrix 
+        self.f2f = np.array(f2f)
+        f2ring = self.f2f[self.f2f].reshape(-1, 9)
+        self.f2ring = [set(f) for f in f2ring]
+        self.f2ring = [list(self.f2ring[i] | set(f)) for i, f in enumerate(self.f2f)]
         
         self.f_edges = np.concatenate((self.f2f.reshape(1, -1), f_edges.reshape(1, -1)), 0)
         mat_inds = torch.from_numpy(self.f_edges).long()
         #mat_vals = torch.ones(mat_inds.shape[1]).float()
         mat_vals = torch.from_numpy(self.fa[self.f_edges[0]]).float()
-        #mat_inds_ident = torch.arange(len(self.faces)).repeat(2).reshape(2, -1)
-        #mat_vals_ident = torch.ones(len(self.faces)).float() * 3.0
-        #mat_inds = torch.cat([mat_inds, mat_inds_ident], dim=1)
-        #mat_vals = torch.cat([mat_vals, mat_vals_ident], dim=0)
         self.f2f_mat = torch.sparse.FloatTensor(mat_inds, mat_vals, size=torch.Size([len(self.faces), len(self.faces)]))
-        
-        #mat_inds_ext = torch.from_numpy(f_edges_ext).long()
-        #mat_vals_ext = torch.from_numpy(self.fa[f_edges_ext[0]]).float()
-        #self.f2f_mat_ext = torch.sparse.FloatTensor(mat_inds_ext, mat_vals_ext, size=torch.Size([len(self.faces), len(self.faces)]))
-        
+        """
+    def build_v2v(self):
+        """ compute adjacent matrix """
+        edges = self.edges
+        v2v_inds = edges.T
+        v2v_inds = torch.from_numpy(np.concatenate([v2v_inds, v2v_inds[[1, 0]]], axis=1)).long()
+        v2v_vals = torch.ones(v2v_inds.shape[1]).float()
+        self.v2v_mat = torch.sparse.FloatTensor(v2v_inds, v2v_vals, size=torch.Size([len(self.vs), len(self.vs)]))
+        self.v_dims = torch.sum(self.v2v_mat.to_dense(), axis=1)
+
     def build_mesh_lap(self):
         """compute mesh laplacian matrix"""
         vs = self.vs
@@ -322,3 +352,36 @@ class Mesh:
                 i1 = indices[i + 1] + 1
                 i2 = indices[i + 2] + 1
                 fp.write('f {0} {1} {2}\n'.format(i0, i1, i2))
+    
+    def save_as_ply(self, filename, fn):
+        assert len(self.vs) > 0
+        vertices = np.array(self.vs, dtype=np.float32).flatten()
+        indices = np.array(self.faces, dtype=np.uint32).flatten()
+        fnormals = np.array(fn, dtype=np.float32).flatten()
+
+        with open(filename, 'w') as fp:
+            # Write Header
+            fp.write("ply\nformat ascii 1.0\nelement vertex {}\n".format(len(self.vs)))
+            fp.write("property float x\nproperty float y\nproperty float z\n")
+            fp.write("element face {}\n".format(len(self.faces)))
+            fp.write("property list uchar int vertex_indices\n")
+            fp.write("property uchar red\nproperty uchar green\nproperty uchar blue\nproperty uchar alpha\n")
+            fp.write("end_header\n")
+            for i in range(0, vertices.size, 3):
+                x = vertices[i + 0]
+                y = vertices[i + 1]
+                z = vertices[i + 2]
+                fp.write("{0:.6f} {1:.6f} {2:.6f}\n".format(x, y, z))
+            
+            for i in range(0, len(indices), 3):
+                i0 = indices[i + 0]
+                i1 = indices[i + 1]
+                i2 = indices[i + 2]
+                c0 = fnormals[i + 0]
+                c1 = fnormals[i + 1]
+                c2 = fnormals[i + 2]
+                c0 = np.clip(int(255 * (c0 + 1) / 2), 0, 255)
+                c1 = np.clip(int(255 * (c1 + 1) / 2), 0, 255)
+                c2 = np.clip(int(255 * (c2 + 1) / 2), 0, 255)
+                c3 = 255
+                fp.write("3 {0} {1} {2} {3} {4} {5} {6}\n".format(i0, i1, i2, c0, c1, c2, c3))
