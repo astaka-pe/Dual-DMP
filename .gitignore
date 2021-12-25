@@ -10,3 +10,4 @@ util/__pychache__
 *.ipynb
 sweep.yaml
 *.pyc
+*.stat
