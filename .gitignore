@@ -2,7 +2,7 @@ datasets
 logs
 wandb
 _program
-util/_pychache__
+util/__pychache__
 .ipynb_checkpoints
 
 *.obj
