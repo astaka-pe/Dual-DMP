@@ -1,9 +1,12 @@
 datasets
 logs
-_program
 wandb
+_program
+util/__pychache__
+.ipynb_checkpoints
 
 *.obj
+*.ply
 *.ipynb
-*.yaml
+sweep.yaml
 *.pyc
