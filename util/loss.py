@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import copy
+import pymeshlab as ml
 from util.mesh import Mesh
 from typing import Union
 from tinymesh import denoise_normal_bilateral
@@ -225,6 +226,13 @@ def mad(norm1: Union[np.ndarray, torch.Tensor], norm2: Union[np.ndarray, torch.T
     mad = np.sum(sad) / len(sad)
 
     return mad
+
+def distance_from_reference_mesh(ms: ml.MeshSet):
+    ms.apply_filter("distance_from_reference_mesh", measuremesh=1, refmesh=0)
+    m = ms.current_mesh()
+    dist = m.vertex_quality_array()
+    dist = np.sum(np.abs(dist)) / len(dist)
+    return dist
 
 """ --- We don't use the loss functions below --- """
 

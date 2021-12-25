@@ -13,6 +13,7 @@ import wandb
 import util.loss as Loss
 import util.models as Models
 import util.datamaker as Datamaker
+import pymeshlab as ml
 from util.objmesh import ObjMesh
 from util.datamaker import Dataset
 from util.mesh import Mesh
@@ -100,6 +101,7 @@ os.makedirs("datasets/" + mesh_name + "/output", exist_ok=True)
 
 """ --- initial condition --- """
 min_mad = 1000
+min_dfrm = 1000
 min_rmse_norm = 1000
 min_rmse_pos = 1000
 init_mad = Loss.mad(n_mesh.fn, gt_mesh.fn)
@@ -207,7 +209,15 @@ for epoch in range(1, FLAGS.iter+1):
             min_rmse_pos = min(min_rmse_pos, test_rmse_pos)
             writer.add_scalar("MAD", mad_value, epoch)
             wandb.log({"MAD": mad_value, "RMSE_pos": test_rmse_pos})
-            Mesh.save(o1_mesh, "datasets/" + mesh_name + "/output/" + str(epoch) + "_pos.obj")
+            o_path = "datasets/" + mesh_name + "/output/" + str(epoch) + "_pos.obj"
+            Mesh.save(o1_mesh, o_path)
+            ms = ml.MeshSet()
+            ms.load_new_mesh(gt_file)
+            ms.load_new_mesh(o_path)
+            dfrm = Loss.distance_from_reference_mesh(ms)
+            min_dfrm = min(min_dfrm, dfrm)
+            print("mad_value: ", mad_value, "min_mad: ", min_mad)
+            print("dfrm_mae : ", dfrm, "min_dfr: ", min_dfrm)
             print("mad_value: ", mad_value, "min_mad: ", min_mad)
 
         elif FLAGS.ntype == "norm":
@@ -231,9 +241,15 @@ for epoch in range(1, FLAGS.iter+1):
             mad_value = Loss.mad(o1_mesh.fn, gt_mesh.fn)
             min_mad = min(mad_value, min_mad)
             writer.add_scalar("MAD", mad_value, epoch)
-            Mesh.save(o1_mesh, "datasets/" + mesh_name + "/output/" + str(epoch) + "_hybrid.obj")
+            o_path = "datasets/" + mesh_name + "/output/" + str(epoch) + "_hybrid.obj"
+            Mesh.save(o1_mesh, o_path)
+            ms = ml.MeshSet()
+            ms.load_new_mesh(gt_file)
+            ms.load_new_mesh(o_path)
+            dfrm = Loss.distance_from_reference_mesh(ms)
+            min_dfrm = min(min_dfrm, dfrm)
             print("mad_value: ", mad_value, "min_mad: ", min_mad)
-            
+            print("dfrm_mae : ", dfrm, "min_dfr: ", min_dfrm)
             """ DMP-Norm """
             test_rmse_norm = Loss.rmse_loss(norm, gt_mesh.fn)
             min_rmse_norm = min(min_rmse_norm, test_rmse_norm)

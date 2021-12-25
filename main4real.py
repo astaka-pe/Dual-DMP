@@ -13,6 +13,7 @@ import wandb
 import util.loss as Loss
 import util.models as Models
 import util.datamaker as Datamaker
+import pymeshlab as ml
 from util.objmesh import ObjMesh
 from util.datamaker import Dataset
 from util.mesh import Mesh
@@ -49,7 +50,7 @@ for k, v in vars(FLAGS).items():
 
 """ --- create dataset --- """
 mesh_dic, dataset = Datamaker.create_dataset(FLAGS.input)
-_, n_file, s_file, mesh_name = mesh_dic["gt_file"], mesh_dic["n_file"], mesh_dic["s_file"], mesh_dic["mesh_name"]
+gt_file, n_file, s_file, mesh_name = mesh_dic["gt_file"], mesh_dic["n_file"], mesh_dic["s_file"], mesh_dic["mesh_name"]
 _, n_mesh, o1_mesh, s_mesh = mesh_dic["gt_mesh"], mesh_dic["n_mesh"], mesh_dic["o1_mesh"], mesh_dic["s_mesh"]
 dt_now = datetime.datetime.now()
 
@@ -88,6 +89,13 @@ scheduler_norm = torch.optim.lr_scheduler.StepLR(optimizer_norm, step_size=500, 
 #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_norm, T_max=50)
 
 """ --- output experimental conditions --- """
+ms = ml.MeshSet()
+ms.load_new_mesh(gt_file)
+ms.load_new_mesh(n_file)
+dfrm = Loss.distance_from_reference_mesh(ms)
+print("initial_dfrm_mae : ", dfrm)
+ms.clear()
+min_dfrm = 1000
 log_dir = "./logs/" + mesh_name + dt_now.isoformat()
 writer = SummaryWriter(log_dir=log_dir)
 log_file = log_dir + "/condition.json"
@@ -145,6 +153,13 @@ for epoch in range(1, FLAGS.iter+1):
         o1_mesh.vs = pos.to('cpu').detach().numpy().copy()
         Mesh.compute_face_normals(o1_mesh)
         Mesh.compute_vert_normals(o1_mesh)
-        Mesh.save(o1_mesh, "datasets/" + mesh_name + "/output/" + str(epoch) + "_hybrid.obj")
-
+        o_path = "datasets/" + mesh_name + "/output/" + str(epoch) + "_hybrid.obj"
+        Mesh.save(o1_mesh, o_path)
+        ms = ml.MeshSet()
+        ms.load_new_mesh(gt_file)
+        ms.load_new_mesh(o_path)
+        dfrm = Loss.distance_from_reference_mesh(ms)
+        min_dfrm = min(min_dfrm, dfrm)
+        print("dfrm_mae : ", dfrm, "min_dfr: ", min_dfrm)
+        
     wandb.save(log_dir + "/model.h5")
