@@ -38,9 +38,11 @@ parser.add_argument('--pos_lr', type=float, default=0.01)
 parser.add_argument('--norm_lr', type=float, default=0.001)
 parser.add_argument('--norm_optim', type=str, default='Adam')
 parser.add_argument('--iter', type=int, default=5000)
-parser.add_argument('--pos_lambda', type=float, default=1.4)
-parser.add_argument('--norm_lambda', type=float, default=0.5)
-parser.add_argument('--pn_lambda', type=float, default=1.0)
+parser.add_argument('--k1', type=float, default=1.0)
+parser.add_argument('--k2', type=float, default=1.4)
+parser.add_argument('--k3', type=float, default=1.0)
+parser.add_argument('--k4', type=float, default=0.5)
+parser.add_argument('--k5', type=float, default=1.0)
 parser.add_argument('--gpu', type=int, default=0)
 parser.add_argument('--ntype', type=str, default='hybrid')
 FLAGS = parser.parse_args()
@@ -60,10 +62,12 @@ wandb.init(project="dmp-adv", group=mesh_name, job_type=FLAGS.ntype, name=dt_now
                "pos_lr": FLAGS.pos_lr,
                "norm_lr": FLAGS.norm_lr,
                "grad_crip": 0.8,
-               "pos_lambda": FLAGS.pos_lambda,
-               "norm_lambda": FLAGS.norm_lambda,
-               "pn_lambda": FLAGS.pn_lambda,
-               "norm_optim": FLAGS.norm_optim
+               "k1":FLAGS.k1,
+               "k2":FLAGS.k2,
+               "k3":FLAGS.k3,
+               "k4":FLAGS.k4,
+               "k5":FLAGS.k5,
+               "norm_optim": FLAGS.norm_optim,
            })
 config = wandb.config
 
@@ -116,11 +120,11 @@ for epoch in range(1, FLAGS.iter+1):
         optimizer_pos.zero_grad()
         pos = posnet(dataset)
         loss_pos1 = Loss.rmse_loss(pos, n_mesh.vs)
-        loss_pos2 = config.pos_lambda * Loss.mesh_laplacian_loss(pos, n_mesh)
+        loss_pos2 = Loss.mesh_laplacian_loss(pos, n_mesh)
         o1_mesh.vs = pos.to('cpu').detach().numpy().copy()
         fn2 = Models.compute_fn(pos, n_mesh.faces).float()
         
-        loss_pos = loss_pos1 + loss_pos2
+        loss_pos = FLAGS.k1 * loss_pos1 + FLAGS.k2 * loss_pos2
         loss_pos.backward()
         optimizer_pos.step()
         writer.add_scalar("pos1", loss_pos1, epoch)
@@ -132,12 +136,10 @@ for epoch in range(1, FLAGS.iter+1):
         normnet.train()
         norm = normnet(dataset)
 
-        loss_norm1 = Loss.norm_cos_loss(norm, n_mesh.fn)
+        loss_norm1 = Loss.norm_cos_loss(norm, n_mesh.fn, ltype="rmse")
         loss_norm2, new_fn = Loss.fn_bnf_loss(norm, n_mesh)
-        loss_norm2 = config.norm_lambda * loss_norm2
-        #loss_norm2 = config.norm_lambda * Loss.test_loss(norm, gt_mesh.fn)
 
-        loss_norm = loss_norm1 + loss_norm2
+        loss_norm = FLAGS.k3 * loss_norm1 + FLAGS.k4 * loss_norm2
         optimizer_norm.zero_grad()
         loss_norm.backward()
 
@@ -158,21 +160,18 @@ for epoch in range(1, FLAGS.iter+1):
 
         pos = posnet(dataset)
         loss_pos1 = Loss.rmse_loss(pos, n_mesh.vs)
-        loss_pos2 = config.pos_lambda * Loss.mesh_laplacian_loss(pos, n_mesh)
+        loss_pos2 = Loss.mesh_laplacian_loss(pos, n_mesh)
 
         norm = normnet(dataset)
         loss_norm1 = Loss.norm_cos_loss(norm, n_mesh.fn)
         loss_norm2, new_fn = Loss.fn_bnf_loss(norm, n_mesh)
-        loss_norm2 = config.norm_lambda * loss_norm2
 
         fn2 = Models.compute_fn(pos, n_mesh.faces).float()
 
-        loss_pos3 = config.pn_lambda * Loss.pos_norm_loss(pos, norm, n_mesh)
+        loss_pos3 = Loss.pos_norm_loss(pos, norm, n_mesh)
         
-        loss_pos = loss_pos1 + loss_pos2 + loss_pos3
-        loss_norm = loss_norm1 + loss_norm2
-        loss_pos.backward(retain_graph=True)
-        loss_norm.backward()
+        loss = FLAGS.k1 * loss_pos1 + FLAGS.k2 * loss_pos2 + FLAGS.k3 * loss_norm1 + FLAGS.k4 * loss_norm2 + FLAGS.k5 * loss_pos3
+        loss.backward()
         nn.utils.clip_grad_norm_(normnet.parameters(), config.grad_crip)
         optimizer_pos.step()
         optimizer_norm.step()
@@ -182,21 +181,20 @@ for epoch in range(1, FLAGS.iter+1):
         writer.add_scalar("pos1", loss_pos1, epoch)
         writer.add_scalar("pos2", loss_pos2, epoch)
         writer.add_scalar("pos3", loss_pos3, epoch)
-        writer.add_scalar("pos", loss_pos, epoch)
         writer.add_scalar("norm1", loss_norm1, epoch)
         writer.add_scalar("norm2", loss_norm2, epoch)
-        writer.add_scalar("norm", loss_norm, epoch)
-        wandb.log({"pos": loss_pos, "pos1": loss_pos1, "pos2": loss_pos2, "pos3": loss_pos3, "norm": loss_norm, "norm1": loss_norm1, "norm2": loss_norm2})
+        wandb.log({"P_rec": loss_pos1, "P_lap": loss_pos2, "PN": loss_pos3, "N_rec": loss_norm1, "N_bnf": loss_norm2})
 
     if epoch % 10 == 0:
         if FLAGS.ntype == "pos":
             print('Epoch %d || Loss_P: %.4f' % (epoch, loss_pos.item()))
         elif FLAGS.ntype == "norm":
             print('Epoch %d || Loss_N: %.4f || lr: %.4f' % (epoch, loss_norm.item(), scheduler_norm.get_last_lr()[0]))
-        elif FLAGS.ntype == "sphere":
-            print('Epoch %d || Loss_N: %.4f' % (epoch, loss_norm.item()))
+        elif FLAGS.ntype == "hybrid":
+            print('Epoch %d || Loss_P: %.4f' % (epoch, loss))
         else:
-            print('Epoch %d || Loss_P: %.4f | Loss_N: %.4f' % (epoch, loss_pos.item(), loss_norm.item()))
+            print("[ERROR]: ntype error")
+            exit()
         
     if epoch % 50 == 0:
         if FLAGS.ntype == "pos":
@@ -218,7 +216,6 @@ for epoch in range(1, FLAGS.iter+1):
             min_dfrm = min(min_dfrm, dfrm)
             print("mad_value: ", mad_value, "min_mad: ", min_mad)
             print("dfrm_mae : ", dfrm, "min_dfr: ", min_dfrm)
-            print("mad_value: ", mad_value, "min_mad: ", min_mad)
 
         elif FLAGS.ntype == "norm":
             mad_value = Loss.mad(norm, gt_mesh.fn)
@@ -255,7 +252,10 @@ for epoch in range(1, FLAGS.iter+1):
             min_rmse_norm = min(min_rmse_norm, test_rmse_norm)
             print("test_rmse: ", float(test_rmse_norm), "min_rmse: ", float(min_rmse_norm))
             writer.add_scalar("test_norm", test_rmse_norm, epoch)
-
             wandb.log({"MAD": mad_value, "RMSE_norm": test_rmse_norm})
+        
+        else:
+            print("[ERROR]: ntype error")
+            exit()
 
     wandb.save(log_dir + "/model.h5")
