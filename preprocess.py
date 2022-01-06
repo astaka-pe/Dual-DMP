@@ -1,6 +1,8 @@
 import pymeshlab as ml
+import numpy as np
 import glob
 import argparse
+from util.mesh import Mesh
 
 def smooth(ms, s_file, step):
     ms.apply_filter("laplacian_smooth", stepsmoothnum=step, cotangentweight=False)
@@ -46,3 +48,18 @@ if len(glob.glob(g_file)) > 0:
 else:
     ms.load_new_mesh(n_file) #ms: [smooth, noise]
     normalize(ms, n_file, s_file)
+
+n_mesh = Mesh(n_file)
+s_mesh = Mesh(s_file)
+g_mesh = Mesh(g_file)
+
+edge_vec = n_mesh.vs[n_mesh.edges][:, 0, :] - n_mesh.vs[n_mesh.edges][:, 1, :]
+ave_len = np.sum(np.linalg.norm(edge_vec, axis=1)) / n_mesh.edges.shape[0]
+
+n_mesh.vs /= ave_len
+g_mesh.vs /= ave_len
+s_mesh.vs /= ave_len
+
+n_mesh.save(n_file)
+s_mesh.save(s_file)
+g_mesh.save(g_file)
