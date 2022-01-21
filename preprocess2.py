@@ -57,7 +57,7 @@ def main():
         n_mesh = gausian_noise(g_mesh, FLAGS.level)
         n_mesh.save(n_file)
     else:
-        n_mesh = gausian_noise(g_mesh, level)
+        n_mesh = gausian_noise(g_mesh, FLAGS.level)
         n_mesh.save(n_file)
 
     ms.load_new_mesh(n_file)
