@@ -4,6 +4,7 @@ import shutil
 import os
 import argparse
 from util.mesh import Mesh
+import util.loss as Loss
 
 def smooth(ms, step):
     ms.apply_filter("laplacian_smooth", stepsmoothnum=step, cotangentweight=False)
@@ -51,18 +52,25 @@ def main():
     ms.save_current_mesh(g_file)        # pre-saving
     g_mesh = Mesh(g_file)
     g_mesh = edge_based_scaling(g_mesh) # re-scaling
+    g_mesh.compute_face_normals()
     g_mesh.save(g_file)
 
+    n_mesh = Mesh(g_file)
     if FLAGS.noise == "gaussian":
-        n_mesh = gausian_noise(g_mesh, FLAGS.level)
+        n_mesh = gausian_noise(n_mesh, FLAGS.level)
+        n_mesh.compute_face_normals()
         n_mesh.save(n_file)
     else:
-        n_mesh = gausian_noise(g_mesh, FLAGS.level)
+        n_mesh = gausian_noise(n_mesh, FLAGS.level)
+        n_mesh.compute_face_normals()
         n_mesh.save(n_file)
 
     ms.load_new_mesh(n_file)
     smooth(ms, step=FLAGS.step)         # smoothing
     ms.save_current_mesh(s_file)
+
+    mad = Loss.mad(n_mesh.fn, g_mesh.fn)
+    print("[Finished] Vertices: {}, faces: {}, mad: {:.4f}".format(n_mesh.vs.shape[0], n_mesh.faces.shape[0], mad))
 
 if __name__ == "__main__":
     main()

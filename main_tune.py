@@ -229,11 +229,11 @@ for k, v in vars(FLAGS).items():
     print('{:12s}: {}'.format(k, v))
 
 config = {
-    "k1": tune.uniform(2.0, 4.0),
-    "k2": tune.uniform(2.0, 4.0),
-    "k3": tune.uniform(2.0, 3.0),
-    "k4": tune.uniform(3.0, 4.0),
-    "k5": tune.uniform(0.5, 1.5),
+    "k1": tune.uniform(0.1, 5.0),
+    "k2": tune.uniform(0.1, 5.0),
+    "k3": tune.uniform(0.1, 5.0),
+    "k4": tune.uniform(0.1, 5.0),
+    "k5": tune.uniform(0.1, 5.0),
     "wandb":{
         "project": "DMP_tune",
     }
