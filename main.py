@@ -172,7 +172,7 @@ for epoch in range(1, FLAGS.iter+1):
         
         loss = FLAGS.k1 * loss_pos1 + FLAGS.k2 * loss_pos2 + FLAGS.k3 * loss_norm1 + FLAGS.k4 * loss_norm2 + FLAGS.k5 * loss_pos3
         loss.backward()
-        nn.utils.clip_grad_norm_(normnet.parameters(), config.grad_crip)
+        #nn.utils.clip_grad_norm_(normnet.parameters(), config.grad_crip)
         optimizer_pos.step()
         optimizer_norm.step()
         scheduler_pos.step()
