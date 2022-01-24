@@ -7,19 +7,33 @@ from util.mesh import Mesh
 from typing import Union
 from scipy.sparse import csr_matrix
 
-#TODO: rename this as "pos_rec_loss"
-def rmse_loss(pred_pos: Union[torch.Tensor, np.ndarray], real_pos: np.ndarray) -> torch.Tensor:
-    """ root mean-square error for vertex positions """
+
+def squared_norm(x, dim=None, keepdim=False):
+    return torch.sum(x * x, dim=dim, keepdim=keepdim)
+
+def norm(x, eps=1.0e-12, dim=None, keepdim=False):
+    return torch.sqrt(squared_norm(x, dim=dim, keepdim=keepdim) + eps)
+
+def pos_rec_loss(pred_pos: Union[torch.Tensor, np.ndarray], real_pos: np.ndarray, ltype="rmse") -> torch.Tensor:
+    """ reconstructuion error for vertex positions """
     if type(pred_pos) == np.ndarray:
         pred_pos = torch.from_numpy(pred_pos)
     real_pos = torch.from_numpy(real_pos).to(pred_pos.device)
-    diff_pos = torch.abs(real_pos - pred_pos)
-    diff_pos = diff_pos ** 2
-    diff_pos = torch.sum(diff_pos.squeeze(), dim=1)
-    mse_pos = torch.sum(diff_pos) / len(diff_pos)
-    rmse_pos = torch.sqrt(mse_pos + 1.0e-6)
 
-    return rmse_pos
+    if ltype == "l1mae":
+        diff_pos = torch.sum(torch.abs(real_pos - pred_pos), dim=1)
+        loss = torch.sum(diff_pos) / len(diff_pos)
+
+    elif ltype == "rmse":
+        diff_pos = torch.abs(real_pos - pred_pos)
+        diff_pos = diff_pos ** 2
+        diff_pos = torch.sum(diff_pos.squeeze(), dim=1)
+        diff_pos = torch.sum(diff_pos) / len(diff_pos)
+        loss = torch.sqrt(diff_pos + 1.0e-6)
+    else:
+        print("[ERROR]: ltype error")
+        exit()
+    return loss
 
 def mesh_laplacian_loss(pred_pos: torch.Tensor, mesh: Mesh, ltype="rmse") -> torch.Tensor:
     """ simple laplacian for output meshes """
@@ -40,21 +54,21 @@ def mesh_laplacian_loss(pred_pos: torch.Tensor, mesh: Mesh, ltype="rmse") -> tor
     return lap_loss
 
 #TODO: rename this as norm_rec_loss
-def norm_cos_loss(pred_norm: Union[torch.Tensor, np.ndarray], real_norm: Union[torch.Tensor, np.ndarray], ltype="l1mae") -> torch.Tensor:
-    """ cosine distance for (vertex, face) normal """
+def norm_rec_loss(pred_norm: Union[torch.Tensor, np.ndarray], real_norm: Union[torch.Tensor, np.ndarray], ltype="l1mae") -> torch.Tensor:
+    """ reconstruction loss for (vertex, face) normal """
     if type(pred_norm) == np.ndarray:
         pred_norm = torch.from_numpy(pred_norm)
     if type(real_norm) == np.ndarray:
         real_norm = torch.from_numpy(real_norm).to(pred_norm.device)
     
-    if ltype == "mae":
+    if ltype == "l2mae":
         norm_diff = torch.sum((pred_norm - real_norm) ** 2, dim=1)
         loss = torch.sqrt(norm_diff + 1e-12)
         loss = torch.sum(loss) / len(loss)
     elif ltype == "l1mae":
         norm_diff = torch.sum(torch.abs(pred_norm - real_norm), dim=1)
         loss = torch.sum(norm_diff) / len(norm_diff)
-    elif ltype == "rmse":
+    elif ltype == "l2rmse":
         norm_diff = torch.sum((pred_norm - real_norm) ** 2, dim=1)
         loss = torch.sum(norm_diff) / len(norm_diff)
         loss = torch.sqrt(loss + 1e-12)
@@ -71,10 +85,15 @@ def norm_cos_loss(pred_norm: Union[torch.Tensor, np.ndarray], real_norm: Union[t
 
     return loss
 
-def fn_bnf_loss(fn: torch.Tensor, mesh: Mesh, ltype="l1mae") -> torch.Tensor:
+def fn_bnf_loss(pos: torch.Tensor, fn: torch.Tensor, mesh: Mesh, ltype="l1mae", loop=5) -> torch.Tensor:
     """ bilateral loss for face normal """
-    fc = torch.from_numpy(mesh.fc).float().to(fn.device)
-    fa = torch.from_numpy(mesh.fa).float().to(fn.device)
+    pos = pos.detach()
+    fc = torch.sum(pos[mesh.faces], 1) / 3.0
+    fa = torch.cross(pos[mesh.faces[:, 1]] - pos[mesh.faces[:, 0]], pos[mesh.faces[:, 2]] - pos[mesh.faces[:, 0]])
+    fa = 0.5 * torch.sqrt(torch.sum(fa**2, axis=1) + 1.0e-12)
+    
+    #fc = torch.from_numpy(mesh.fc).float().to(fn.device)
+    #fa = torch.from_numpy(mesh.fa).float().to(fn.device)
     f2f = torch.from_numpy(mesh.f2f).long().to(fn.device)
     no_neig = 1.0 * (f2f != -1)
     
@@ -83,9 +102,10 @@ def fn_bnf_loss(fn: torch.Tensor, mesh: Mesh, ltype="l1mae") -> torch.Tensor:
     fc0_tile = fc.reshape(-1, 1, 3)
     fc_dist = squared_norm(neig_fc - fc0_tile, dim=2)
     sigma_c = torch.sum(torch.sqrt(fc_dist + 1.0e-12)) / (fc_dist.shape[0] * fc_dist.shape[1])
+    #sigma_c = 1.0
 
     new_fn = fn
-    for i in range(5):
+    for i in range(loop):
         neig_fn = new_fn[f2f]
         fn0_tile = new_fn.reshape(-1, 1, 3)
         fn_dist = squared_norm(neig_fn - fn0_tile, dim=2)
@@ -142,7 +162,7 @@ def pos_norm_loss(pos: Union[torch.Tensor, np.ndarray], norm: Union[torch.Tensor
 
     return loss
 
-def weighted_norm_cos_loss(pred_norm: Union[torch.Tensor, np.ndarray], real_norm: Union[torch.Tensor, np.ndarray], mask: np.ndarray) -> torch.Tensor:
+def weighted_norm_rec_loss(pred_norm: Union[torch.Tensor, np.ndarray], real_norm: Union[torch.Tensor, np.ndarray], mask: np.ndarray) -> torch.Tensor:
     """ cosine distance for (vertex, face) normal """
     if type(pred_norm) == np.ndarray:
         pred_norm = torch.from_numpy(pred_norm)
@@ -241,12 +261,6 @@ def bnf(fn: Union[torch.Tensor, np.ndarray], mesh: Mesh, sigma_s=0.7, sigma_c=0.
                 Mesh.compute_face_normals(new_mesh)
 
     return new_fn, new_mesh
-
-def squared_norm(x, dim=None, keepdim=False):
-    return torch.sum(x * x, dim=dim, keepdim=keepdim)
-
-def norm(x, eps=1.0e-12, dim=None, keepdim=False):
-    return torch.sqrt(squared_norm(x, dim=dim, keepdim=keepdim) + eps)
 
 def test_loss(fn, g_fn):
     g_fn = torch.from_numpy(g_fn).to(fn.device)

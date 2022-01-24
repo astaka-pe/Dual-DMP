@@ -35,14 +35,16 @@ def set_random_seed(seed=12345):
 parser = argparse.ArgumentParser(description='DMP_adv for mesh')
 parser.add_argument('-i', '--input', type=str, required=True)
 parser.add_argument('--pos_lr', type=float, default=0.01)
-parser.add_argument('--norm_lr', type=float, default=0.001)
+parser.add_argument('--norm_lr', type=float, default=0.01)
 parser.add_argument('--norm_optim', type=str, default='Adam')
-parser.add_argument('--iter', type=int, default=5000)
+parser.add_argument('--iter', type=int, default=1000)
 parser.add_argument('--k1', type=float, default=1.0)
 parser.add_argument('--k2', type=float, default=1.4)
 parser.add_argument('--k3', type=float, default=1.0)
 parser.add_argument('--k4', type=float, default=0.5)
 parser.add_argument('--k5', type=float, default=1.0)
+parser.add_argument('--grad_crip', type=float, default=0.8)
+parser.add_argument('--bnfloop', type=int, default=5)
 parser.add_argument('--gpu', type=int, default=0)
 parser.add_argument('--ntype', type=str, default='hybrid')
 FLAGS = parser.parse_args()
@@ -61,7 +63,7 @@ wandb.init(project="dmp-adv", group=mesh_name, job_type=FLAGS.ntype, name=dt_now
            config={
                "pos_lr": FLAGS.pos_lr,
                "norm_lr": FLAGS.norm_lr,
-               "grad_crip": 0.8,
+               "grad_crip": FLAGS.grad_crip,
                "k1":FLAGS.k1,
                "k2":FLAGS.k2,
                "k3":FLAGS.k3,
@@ -109,8 +111,8 @@ min_dfrm = 1000
 min_rmse_norm = 1000
 min_rmse_pos = 1000
 init_mad = Loss.mad(n_mesh.fn, gt_mesh.fn)
-init_vn_loss = Loss.rmse_loss(n_mesh.vn, gt_mesh.vn)
-init_fn_loss = Loss.rmse_loss(n_mesh.fn, gt_mesh.fn)
+init_vn_loss = Loss.pos_rec_loss(n_mesh.vn, gt_mesh.vn)
+init_fn_loss = Loss.pos_rec_loss(n_mesh.fn, gt_mesh.fn)
 print("init_mad: ", init_mad, " init_vn_loss: ", float(init_vn_loss), " init_fn_loss: ", float(init_fn_loss))
 
 """ --- learning loop --- """
@@ -119,7 +121,7 @@ for epoch in range(1, FLAGS.iter+1):
         posnet.train()
         optimizer_pos.zero_grad()
         pos = posnet(dataset)
-        loss_pos1 = Loss.rmse_loss(pos, n_mesh.vs)
+        loss_pos1 = Loss.pos_rec_loss(pos, n_mesh.vs)
         loss_pos2 = Loss.mesh_laplacian_loss(pos, n_mesh)
         o1_mesh.vs = pos.to('cpu').detach().numpy().copy()
         fn2 = Models.compute_fn(pos, n_mesh.faces).float()
@@ -136,7 +138,7 @@ for epoch in range(1, FLAGS.iter+1):
         normnet.train()
         norm = normnet(dataset)
 
-        loss_norm1 = Loss.norm_cos_loss(norm, n_mesh.fn, ltype="rmse")
+        loss_norm1 = Loss.norm_rec_loss(norm, n_mesh.fn, ltype="rmse")
         loss_norm2, new_fn = Loss.fn_bnf_loss(norm, n_mesh)
 
         loss_norm = FLAGS.k3 * loss_norm1 + FLAGS.k4 * loss_norm2
@@ -159,20 +161,23 @@ for epoch in range(1, FLAGS.iter+1):
         optimizer_norm.zero_grad()
 
         pos = posnet(dataset)
-        loss_pos1 = Loss.rmse_loss(pos, n_mesh.vs)
+        loss_pos1 = Loss.pos_rec_loss(pos, n_mesh.vs)
         loss_pos2 = Loss.mesh_laplacian_loss(pos, n_mesh)
 
         norm = normnet(dataset)
-        loss_norm1 = Loss.norm_cos_loss(norm, n_mesh.fn)
-        loss_norm2, new_fn = Loss.fn_bnf_loss(norm, n_mesh)
+        loss_norm1 = Loss.norm_rec_loss(norm, n_mesh.fn)
+        loss_norm2, new_fn = Loss.fn_bnf_loss(pos, norm, n_mesh, loop=FLAGS.bnfloop)
+        if epoch <= 100:
+            loss_norm2 = loss_norm2 * 0.0
 
         fn2 = Models.compute_fn(pos, n_mesh.faces).float()
 
         loss_pos3 = Loss.pos_norm_loss(pos, norm, n_mesh)
+        #loss_pos3 = Loss.norm_rec_loss(norm, fn2)
         
         loss = FLAGS.k1 * loss_pos1 + FLAGS.k2 * loss_pos2 + FLAGS.k3 * loss_norm1 + FLAGS.k4 * loss_norm2 + FLAGS.k5 * loss_pos3
         loss.backward()
-        #nn.utils.clip_grad_norm_(normnet.parameters(), config.grad_crip)
+        nn.utils.clip_grad_norm_(normnet.parameters(), config.grad_crip)
         optimizer_pos.step()
         optimizer_norm.step()
         scheduler_pos.step()
@@ -203,7 +208,7 @@ for epoch in range(1, FLAGS.iter+1):
             Mesh.compute_vert_normals(o1_mesh)
             mad_value = Loss.mad(o1_mesh.fn, gt_mesh.fn)
             min_mad = min(mad_value, min_mad)
-            test_rmse_pos = Loss.rmse_loss(pos, gt_mesh.vs)
+            test_rmse_pos = Loss.pos_rec_loss(pos, gt_mesh.vs)
             min_rmse_pos = min(min_rmse_pos, test_rmse_pos)
             writer.add_scalar("MAD", mad_value, epoch)
             wandb.log({"MAD": mad_value, "RMSE_pos": test_rmse_pos})
@@ -220,7 +225,7 @@ for epoch in range(1, FLAGS.iter+1):
         elif FLAGS.ntype == "norm":
             mad_value = Loss.mad(norm, gt_mesh.fn)
             min_mad = min(mad_value, min_mad)
-            test_rmse_norm = Loss.rmse_loss(norm, gt_mesh.fn)
+            test_rmse_norm = Loss.pos_rec_loss(norm, gt_mesh.fn)
             min_rmse_norm = min(min_rmse_norm, test_rmse_norm)
             writer.add_scalar("MAD", mad_value, epoch)
             writer.add_scalar("test_norm", test_rmse_norm, epoch)
@@ -231,7 +236,20 @@ for epoch in range(1, FLAGS.iter+1):
             print("test_rmse: ", float(test_rmse_norm), "min_rmse: ", float(min_rmse_norm))
 
         elif FLAGS.ntype == "hybrid":
-            o1_mesh.vs = pos.to('cpu').detach().numpy().copy()
+            updating = "none"
+            if epoch % 500 == 0:
+                if updating == "normal":
+                    new_pos = Models.vertex_updating(pos.detach(), norm.detach(), n_mesh)
+                    new_pos = new_pos.to("cpu").numpy().copy()
+                elif updating == "bnf":
+                    new_norm = Models.bnf(pos.detach(), norm.detach(), n_mesh, loop=10)
+                    new_pos = Models.vertex_updating(pos.detach(), new_norm, n_mesh)
+                    new_pos = new_pos.to("cpu").numpy().copy()
+                else:
+                    new_pos = pos.to('cpu').detach().numpy().copy()
+            else:
+                new_pos = pos.to('cpu').detach().numpy().copy()
+            o1_mesh.vs = new_pos
             Mesh.compute_face_normals(o1_mesh)
             Mesh.compute_vert_normals(o1_mesh)
             """ DMP-Pos """
@@ -245,14 +263,19 @@ for epoch in range(1, FLAGS.iter+1):
             ms.load_new_mesh(o_path)
             dfrm = Loss.distance_from_reference_mesh(ms)
             min_dfrm = min(min_dfrm, dfrm)
-            print("mad_value: ", mad_value, "min_mad: ", min_mad)
-            print("dfrm_mae : ", dfrm, "min_dfr: ", min_dfrm)
+            print(" Pos_mad: {:.3f} min: {:.3f}".format(mad_value, min_mad))
+            #print("dfrm_mae : ", dfrm, "min_dfr: ", min_dfrm)
             """ DMP-Norm """
-            test_rmse_norm = Loss.rmse_loss(norm, gt_mesh.fn)
+            test_rmse_norm = Loss.pos_rec_loss(norm, gt_mesh.fn)
             min_rmse_norm = min(min_rmse_norm, test_rmse_norm)
-            print("test_rmse: ", float(test_rmse_norm), "min_rmse: ", float(min_rmse_norm))
+            norm_mad = Loss.mad(norm, gt_mesh.fn)
+            print("Norm_mad: {:.3f}".format(norm_mad))
+            #print("test_rmse: ", float(test_rmse_norm), "min_rmse: ", float(min_rmse_norm))
             writer.add_scalar("test_norm", test_rmse_norm, epoch)
-            wandb.log({"MAD": mad_value, "RMSE_norm": test_rmse_norm})
+            wandb.log({"MAD": mad_value, "RMSE_norm": test_rmse_norm, "norm_mad": norm_mad})
+            # if norm_mad > 0:
+            #     Mesh.display_face_normals(o1_mesh, norm.to('cpu').detach().numpy().copy())
+            #     import pdb;pdb.set_trace()
         
         else:
             print("[ERROR]: ntype error")

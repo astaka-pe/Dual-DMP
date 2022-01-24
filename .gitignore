@@ -1,5 +1,6 @@
 datasets
 data
+scripts
 logs
 wandb
 _program

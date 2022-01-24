@@ -43,7 +43,8 @@ def create_dataset(file_path: str) -> Tuple[dict, Dataset]:
     np.random.seed(314)
     z1 = np.random.normal(size=(n_mesh.vs.shape[0], 16))
     np.random.seed(314)
-    z2 = np.random.normal(size=(n_mesh.fn.shape[0], 16))
+    #z2 = np.random.normal(size=(n_mesh.fn.shape[0], 16))
+    z2 = np.concatenate([n_mesh.fc, n_mesh.fn, n_mesh.fa.reshape(-1, 1)], axis=1)
     z1, z2 = torch.tensor(z1, dtype=torch.float, requires_grad=True), torch.tensor(z2, dtype=torch.float, requires_grad=True)
 
     x_pos = torch.tensor(s_mesh.vs, dtype=torch.float)

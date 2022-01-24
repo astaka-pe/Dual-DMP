@@ -74,8 +74,8 @@ def train(config):
     min_rmse_norm = 1000
     min_rmse_pos = 1000
     init_mad = Loss.mad(n_mesh.fn, gt_mesh.fn)
-    init_vn_loss = Loss.rmse_loss(n_mesh.vn, gt_mesh.vn)
-    init_fn_loss = Loss.rmse_loss(n_mesh.fn, gt_mesh.fn)
+    init_vn_loss = Loss.pos_rec_loss(n_mesh.vn, gt_mesh.vn)
+    init_fn_loss = Loss.pos_rec_loss(n_mesh.fn, gt_mesh.fn)
 
     """ --- learning loop --- """
     for epoch in range(1, FLAGS.iter+1):
@@ -83,7 +83,7 @@ def train(config):
             posnet.train()
             optimizer_pos.zero_grad()
             pos = posnet(dataset)
-            loss_pos1 = Loss.rmse_loss(pos, n_mesh.vs)
+            loss_pos1 = Loss.pos_rec_loss(pos, n_mesh.vs)
             loss_pos2 = Loss.mesh_laplacian_loss(pos, n_mesh)
             o1_mesh.vs = pos.to('cpu').detach().numpy().copy()
             fn2 = Models.compute_fn(pos, n_mesh.faces).float()
@@ -99,7 +99,7 @@ def train(config):
             normnet.train()
             norm = normnet(dataset)
 
-            loss_norm1 = Loss.norm_cos_loss(norm, n_mesh.fn, ltype="rmse")
+            loss_norm1 = Loss.norm_rec_loss(norm, n_mesh.fn, ltype="rmse")
             loss_norm2, new_fn = Loss.fn_bnf_loss(norm, n_mesh)
 
             loss_norm = config["k3"] * loss_norm1 + config["k4"] * loss_norm2
@@ -121,13 +121,14 @@ def train(config):
             optimizer_norm.zero_grad()
 
             pos = posnet(dataset)
-            loss_pos1 = Loss.rmse_loss(pos, n_mesh.vs)
+            loss_pos1 = Loss.pos_rec_loss(pos, n_mesh.vs)
             loss_pos2 = Loss.mesh_laplacian_loss(pos, n_mesh)
 
             norm = normnet(dataset)
-            loss_norm1 = Loss.norm_cos_loss(norm, n_mesh.fn)
-            loss_norm2, new_fn = Loss.fn_bnf_loss(norm, n_mesh)
-
+            loss_norm1 = Loss.norm_rec_loss(norm, n_mesh.fn)
+            loss_norm2, new_fn = Loss.fn_bnf_loss(pos, norm, n_mesh)
+            if epoch <= 100:
+                loss_norm2 = loss_norm2 * 0.0
             fn2 = Models.compute_fn(pos, n_mesh.faces).float()
 
             loss_pos3 = Loss.pos_norm_loss(pos, norm, n_mesh)
@@ -150,7 +151,9 @@ def train(config):
             o1_mesh.vs = pos.to('cpu').detach().numpy().copy()
             Mesh.compute_face_normals(o1_mesh)
             Mesh.compute_vert_normals(o1_mesh)
-            mad_value = Loss.mad(o1_mesh.fn, gt_mesh.fn)
+            pos_mad = Loss.mad(o1_mesh.fn, gt_mesh.fn)
+            norm_mad = Loss.mad(norm, gt_mesh.fn)
+            mad_value = 0.5 * (pos_mad + norm_mad)
             tune.report(loss=mad_value)
             wandb.log({"loss": mad_value})
 
@@ -161,7 +164,7 @@ def train(config):
                 Mesh.compute_vert_normals(o1_mesh)
                 mad_value = Loss.mad(o1_mesh.fn, gt_mesh.fn)
                 min_mad = min(mad_value, min_mad)
-                test_rmse_pos = Loss.rmse_loss(pos, gt_mesh.vs)
+                test_rmse_pos = Loss.pos_rec_loss(pos, gt_mesh.vs)
                 min_rmse_pos = min(min_rmse_pos, test_rmse_pos)
                 writer.add_scalar("MAD", mad_value, epoch)
                 
@@ -176,7 +179,7 @@ def train(config):
             elif FLAGS.ntype == "norm":
                 mad_value = Loss.mad(norm, gt_mesh.fn)
                 min_mad = min(mad_value, min_mad)
-                test_rmse_norm = Loss.rmse_loss(norm, gt_mesh.fn)
+                test_rmse_norm = Loss.pos_rec_loss(norm, gt_mesh.fn)
                 min_rmse_norm = min(min_rmse_norm, test_rmse_norm)
                 writer.add_scalar("MAD", mad_value, epoch)
                 writer.add_scalar("test_norm", test_rmse_norm, epoch)
@@ -189,20 +192,22 @@ def train(config):
                 Mesh.compute_face_normals(o1_mesh)
                 Mesh.compute_vert_normals(o1_mesh)
                 """ DMP-Pos """
-                mad_value = Loss.mad(o1_mesh.fn, gt_mesh.fn)
-                min_mad = min(mad_value, min_mad)
-                writer.add_scalar("MAD", mad_value, epoch)
+                pos_mad = Loss.mad(o1_mesh.fn, gt_mesh.fn)
+                min_mad = min(pos_mad, min_mad)
+                writer.add_scalar("MAD", pos_mad, epoch)
                 o_path = "datasets/" + mesh_name + "/output/" + str(epoch) + "_hybrid.obj"
                 Mesh.save(o1_mesh, o_path)
-                ms = ml.MeshSet()
-                ms.load_new_mesh(gt_file)
-                ms.load_new_mesh(o_path)
-                dfrm = Loss.distance_from_reference_mesh(ms)
-                min_dfrm = min(min_dfrm, dfrm)
+                # ms = ml.MeshSet()
+                # ms.load_new_mesh(gt_file)
+                # ms.load_new_mesh(o_path)
+                # dfrm = Loss.distance_from_reference_mesh(ms)
+                # min_dfrm = min(min_dfrm, dfrm)
                 """ DMP-Norm """
-                test_rmse_norm = Loss.rmse_loss(norm, gt_mesh.fn)
-                min_rmse_norm = min(min_rmse_norm, test_rmse_norm)
-                writer.add_scalar("test_norm", test_rmse_norm, epoch)
+                norm_mad = Loss.mad(norm, gt_mesh.fn)
+                # test_rmse_norm = Loss.pos_rec_loss(norm, gt_mesh.fn)
+                # min_rmse_norm = min(min_rmse_norm, test_rmse_norm)
+                # writer.add_scalar("test_norm", test_rmse_norm, epoch)
+                ave_mad = 0.5 * (pos_mad + norm_mad)
             
             else:
                 print("[ERROR]: ntype error")
@@ -229,11 +234,11 @@ for k, v in vars(FLAGS).items():
     print('{:12s}: {}'.format(k, v))
 
 config = {
-    "k1": tune.uniform(0.1, 5.0),
-    "k2": tune.uniform(0.1, 5.0),
-    "k3": tune.uniform(0.1, 5.0),
-    "k4": tune.uniform(0.1, 5.0),
-    "k5": tune.uniform(0.1, 5.0),
+    "k1": tune.uniform(3.0, 4.0),
+    "k2": tune.uniform(3.0, 4.0),
+    "k3": tune.uniform(3.0, 4.0),
+    "k4": tune.uniform(2.0, 3.0),
+    "k5": tune.uniform(1.0, 2.0),
     "wandb":{
         "project": "DMP_tune",
     }

@@ -202,3 +202,48 @@ def compute_nvt(mesh: Mesh, alpha=0.2, beta=0.2, delta=0.3) -> np.ndarray:
         """
         
     return fec_strength
+
+
+def bnf(pos: torch.Tensor, fn: torch.Tensor, mesh: Mesh, loop=1) -> torch.Tensor:
+    """ bilateral loss for face normal """
+    fc = torch.sum(pos[mesh.faces], 1) / 3.0
+    fa = torch.cross(pos[mesh.faces[:, 1]] - pos[mesh.faces[:, 0]], pos[mesh.faces[:, 2]] - pos[mesh.faces[:, 0]])
+    fa = 0.5 * torch.sqrt(torch.sum(fa**2, axis=1) + 1.0e-12)
+    
+    f2f = torch.from_numpy(mesh.f2f).long().to(pos.device)
+    no_neig = 1.0 * (f2f != -1)
+    
+    neig_fc = fc[f2f]
+    neig_fa = fa[f2f] * no_neig
+    fc0_tile = fc.reshape(-1, 1, 3)
+    fc_dist = torch.sum((neig_fc-fc0_tile)**2, dim=2)
+    sigma_c = torch.sum(torch.sqrt(fc_dist + 1.0e-12)) / (fc_dist.shape[0] * fc_dist.shape[1])
+
+    new_fn = fn
+    for i in range(loop):
+        neig_fn = new_fn[f2f]
+        fn0_tile = new_fn.reshape(-1, 1, 3)
+        fn_dist = torch.sum((neig_fn-fn0_tile)**2, dim=2)
+        sigma_s = 0.3
+        wc = torch.exp(-1.0 * fc_dist / (2 * (sigma_c ** 2)))
+        ws = torch.exp(-1.0 * fn_dist / (2 * (sigma_s ** 2)))
+        
+        W = torch.stack([wc*ws*neig_fa, wc*ws*neig_fa, wc*ws*neig_fa], dim=2)
+
+        new_fn = torch.sum(W * neig_fn, dim=1)
+        new_fn = new_fn / (torch.norm(new_fn, dim=1, keepdim=True) + 1.0e-12)
+    return new_fn
+
+def vertex_updating(pos: torch.Tensor, norm: torch.Tensor, mesh: Mesh, loop=10) -> torch.Tensor:
+    new_pos = pos.clone()
+    for iter in range(loop):
+        fc = torch.sum(new_pos[mesh.faces], 1) / 3.0
+        for i, v in enumerate(pos):
+            cis = fc[list(mesh.vf[i])]
+            nis = norm[list(mesh.vf[i])]
+            cvis = cis - v.reshape(1, -1)
+            ncvis = torch.sum(nis * cvis, dim=1)
+            dvi = torch.sum(ncvis.reshape(-1, 1) * nis, dim=0)
+            dvi /= len(mesh.vf[i])
+            new_pos[i] += dvi
+    return new_pos
