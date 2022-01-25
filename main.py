@@ -236,19 +236,7 @@ for epoch in range(1, FLAGS.iter+1):
             print("test_rmse: ", float(test_rmse_norm), "min_rmse: ", float(min_rmse_norm))
 
         elif FLAGS.ntype == "hybrid":
-            updating = "none"
-            if epoch % 500 == 0:
-                if updating == "normal":
-                    new_pos = Models.vertex_updating(pos.detach(), norm.detach(), n_mesh)
-                    new_pos = new_pos.to("cpu").numpy().copy()
-                elif updating == "bnf":
-                    new_norm = Models.bnf(pos.detach(), norm.detach(), n_mesh, loop=10)
-                    new_pos = Models.vertex_updating(pos.detach(), new_norm, n_mesh)
-                    new_pos = new_pos.to("cpu").numpy().copy()
-                else:
-                    new_pos = pos.to('cpu').detach().numpy().copy()
-            else:
-                new_pos = pos.to('cpu').detach().numpy().copy()
+            new_pos = pos.to('cpu').detach().numpy().copy()
             o1_mesh.vs = new_pos
             Mesh.compute_face_normals(o1_mesh)
             Mesh.compute_vert_normals(o1_mesh)

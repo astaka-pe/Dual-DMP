@@ -42,9 +42,28 @@ def create_dataset(file_path: str) -> Tuple[dict, Dataset]:
     """ create graph """
     np.random.seed(314)
     z1 = np.random.normal(size=(n_mesh.vs.shape[0], 16))
-    np.random.seed(314)
-    #z2 = np.random.normal(size=(n_mesh.fn.shape[0], 16))
-    z2 = np.concatenate([n_mesh.fc, n_mesh.fn, n_mesh.fa.reshape(-1, 1)], axis=1)
+    #z1 = np.concatenate([s_mesh.vs, s_mesh.vn], axis=1)
+
+    norm_initialization = "pos_norm_area" #["rand", "pos_rand", "norm_rand", "pos_norm", "pos_norm_area"]
+
+    if norm_initialization == "rand":
+        np.random.seed(314)
+        z2 = np.random.normal(size=(n_mesh.fn.shape[0], 6))
+    elif norm_initialization == "pos_rand":
+        np.random.seed(314)
+        z2_rand = np.random.normal(size=(n_mesh.fn.shape[0], 3))
+        z2 = np.concatenate([n_mesh.fc, z2_rand], axis=1)
+    elif norm_initialization == "norm_rand":
+        np.random.seed(314)
+        z2_rand = np.random.normal(size=(n_mesh.fn.shape[0], 3))
+        z2 = np.concatenate([n_mesh.fn, z2_rand], axis=1)
+    elif norm_initialization == "pos_norm":
+        z2 = np.concatenate([n_mesh.fc, n_mesh.fn], axis=1)
+    elif norm_initialization == "pos_norm_area":
+        z2 = np.concatenate([n_mesh.fc, n_mesh.fn, n_mesh.fa.reshape(-1, 1)], axis=1)
+    else:
+        print("[ERROR] No such norm-initialization !")
+
     z1, z2 = torch.tensor(z1, dtype=torch.float, requires_grad=True), torch.tensor(z2, dtype=torch.float, requires_grad=True)
 
     x_pos = torch.tensor(s_mesh.vs, dtype=torch.float)
