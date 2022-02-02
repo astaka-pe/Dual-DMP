@@ -169,7 +169,7 @@ for epoch in range(1, FLAGS.iter+1):
 
         norm = normnet(dataset)
         loss_norm1 = Loss.norm_rec_loss(norm, n_mesh.fn)
-        """ for full pipeline """
+        """ for full-pipeline """
         loss_norm2, new_fn = Loss.fn_bnf_loss(pos, norm, n_mesh, loop=FLAGS.bnfloop)
         """ for ablation study """
         #loss_norm2, new_fn = Loss.fn_bnf_loss(n_mesh.vs, norm, n_mesh, loop=FLAGS.bnfloop)
