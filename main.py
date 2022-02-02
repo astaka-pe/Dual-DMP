@@ -14,6 +14,7 @@ import util.loss as Loss
 import util.models as Models
 import util.datamaker as Datamaker
 import pymeshlab as ml
+import warnings
 from util.objmesh import ObjMesh
 from util.datamaker import Dataset
 from util.mesh import Mesh
@@ -21,6 +22,8 @@ from util.networks import PosNet, NormalNet, LightNormalNet, BigNormalNet
 
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.data import Data
+
+warnings.simplefilter("ignore")
 
 def set_random_seed(seed=12345):
     torch.manual_seed(seed)
@@ -166,7 +169,11 @@ for epoch in range(1, FLAGS.iter+1):
 
         norm = normnet(dataset)
         loss_norm1 = Loss.norm_rec_loss(norm, n_mesh.fn)
+        """ for full pipeline """
         loss_norm2, new_fn = Loss.fn_bnf_loss(pos, norm, n_mesh, loop=FLAGS.bnfloop)
+        """ for ablation study """
+        #loss_norm2, new_fn = Loss.fn_bnf_loss(n_mesh.vs, norm, n_mesh, loop=FLAGS.bnfloop)
+        
         if epoch <= 100:
             loss_norm2 = loss_norm2 * 0.0
 
@@ -236,19 +243,7 @@ for epoch in range(1, FLAGS.iter+1):
             print("test_rmse: ", float(test_rmse_norm), "min_rmse: ", float(min_rmse_norm))
 
         elif FLAGS.ntype == "hybrid":
-            updating = "none"
-            if epoch % 500 == 0:
-                if updating == "normal":
-                    new_pos = Models.vertex_updating(pos.detach(), norm.detach(), n_mesh)
-                    new_pos = new_pos.to("cpu").numpy().copy()
-                elif updating == "bnf":
-                    new_norm = Models.bnf(pos.detach(), norm.detach(), n_mesh, loop=10)
-                    new_pos = Models.vertex_updating(pos.detach(), new_norm, n_mesh)
-                    new_pos = new_pos.to("cpu").numpy().copy()
-                else:
-                    new_pos = pos.to('cpu').detach().numpy().copy()
-            else:
-                new_pos = pos.to('cpu').detach().numpy().copy()
+            new_pos = pos.to('cpu').detach().numpy().copy()
             o1_mesh.vs = new_pos
             Mesh.compute_face_normals(o1_mesh)
             Mesh.compute_vert_normals(o1_mesh)
@@ -273,9 +268,7 @@ for epoch in range(1, FLAGS.iter+1):
             #print("test_rmse: ", float(test_rmse_norm), "min_rmse: ", float(min_rmse_norm))
             writer.add_scalar("test_norm", test_rmse_norm, epoch)
             wandb.log({"MAD": mad_value, "RMSE_norm": test_rmse_norm, "norm_mad": norm_mad})
-            # if norm_mad > 0:
-            #     Mesh.display_face_normals(o1_mesh, norm.to('cpu').detach().numpy().copy())
-            #     import pdb;pdb.set_trace()
+
         
         else:
             print("[ERROR]: ntype error")

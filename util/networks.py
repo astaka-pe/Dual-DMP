@@ -77,7 +77,7 @@ class NormalNet(nn.Module):
         super(NormalNet, self).__init__()
         self.device = device
         
-        h = [7, 32, 64, 128, 256, 256, 512, 512, 256, 256, 128, 64, 32, 16, 3]
+        h = [16, 32, 64, 128, 256, 256, 512, 512, 256, 256, 128, 64, 32, 16, 3]
 
         self.conv1  = GCNConv(h[0], h[1])
         self.conv2  = GCNConv(h[1], h[2])

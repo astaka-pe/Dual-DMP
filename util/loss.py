@@ -87,7 +87,10 @@ def norm_rec_loss(pred_norm: Union[torch.Tensor, np.ndarray], real_norm: Union[t
 
 def fn_bnf_loss(pos: torch.Tensor, fn: torch.Tensor, mesh: Mesh, ltype="l1mae", loop=5) -> torch.Tensor:
     """ bilateral loss for face normal """
-    pos = pos.detach()
+    if type(pos) == np.ndarray:
+        pos = torch.from_numpy(pos).to(fn.device)
+    else:
+        pos = pos.detach()
     fc = torch.sum(pos[mesh.faces], 1) / 3.0
     fa = torch.cross(pos[mesh.faces[:, 1]] - pos[mesh.faces[:, 0]], pos[mesh.faces[:, 2]] - pos[mesh.faces[:, 0]])
     fa = 0.5 * torch.sqrt(torch.sum(fa**2, axis=1) + 1.0e-12)
