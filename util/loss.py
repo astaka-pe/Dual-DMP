@@ -87,7 +87,10 @@ def norm_rec_loss(pred_norm: Union[torch.Tensor, np.ndarray], real_norm: Union[t
 
 def fn_bnf_loss(pos: torch.Tensor, fn: torch.Tensor, mesh: Mesh, ltype="l1mae", loop=5) -> torch.Tensor:
     """ bilateral loss for face normal """
-    pos = pos.detach()
+    if type(pos) == np.ndarray:
+        pos = torch.from_numpy(pos).to(fn.device)
+    else:
+        pos = pos.detach()
     fc = torch.sum(pos[mesh.faces], 1) / 3.0
     fa = torch.cross(pos[mesh.faces[:, 1]] - pos[mesh.faces[:, 0]], pos[mesh.faces[:, 2]] - pos[mesh.faces[:, 0]])
     fa = 0.5 * torch.sqrt(torch.sum(fa**2, axis=1) + 1.0e-12)
@@ -283,6 +286,11 @@ def mad(norm1: Union[np.ndarray, torch.Tensor], norm2: Union[np.ndarray, torch.T
     mad = np.sum(sad) / len(sad)
 
     return mad
+
+def angular_difference(norm1, norm2):
+    inner = np.sum(norm1 * norm2, 1)
+    sad = np.rad2deg(np.arccos(np.clip(inner, -1.0, 1.0)))
+    return sad
 
 def distance_from_reference_mesh(ms: ml.MeshSet):
     ms.apply_filter("distance_from_reference_mesh", measuremesh=1, refmesh=0)
