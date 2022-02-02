@@ -40,15 +40,33 @@ def create_dataset(file_path: str) -> Tuple[dict, Dataset]:
     s_mesh = Mesh(s_file)
 
     """ create graph """
-    np.random.seed(314)
-    z1 = np.random.normal(size=(n_mesh.vs.shape[0], 16))
-    #z1 = np.concatenate([s_mesh.vs, s_mesh.vn], axis=1)
+    pos_initialization = "rand16"  #["rand6", "rand16", "pos_rand", "norm_rand", "pos_norm"]
+    if pos_initialization == "rand6":
+        np.random.seed(314)
+        z1 = np.random.normal(size=(n_mesh.vs.shape[0], 6))
+    elif pos_initialization == "rand16":
+        np.random.seed(314)
+        z1 = np.random.normal(size=(n_mesh.vs.shape[0], 16))
+    elif pos_initialization == "pos_rand":
+        np.random.seed(314)
+        z1_rand = np.random.normal(size=(n_mesh.vs.shape[0], 3))
+        z1 = np.concatenate([s_mesh.vs, z1_rand], axis=1)
+    elif pos_initialization == "norm_rand":
+        np.random.seed(314)
+        z1_rand = np.random.normal(size=(n_mesh.vs.shape[0], 3))
+        z1 = np.concatenate([s_mesh.vn, z1_rand], axis=1)
+    elif pos_initialization == "pos_norm":
+        z1 = np.concatenate([s_mesh.vs, s_mesh.vn], axis=1)
+    else:
+        print("[ERROR] No such norm-initialization !")
 
-    norm_initialization = "pos_norm_area" #["rand", "pos_rand", "norm_rand", "pos_norm", "pos_norm_area"]
-
-    if norm_initialization == "rand":
+    norm_initialization = "pos_norm_area" #["rand6", "rand16", "pos_rand", "norm_rand", "pos_norm", "pos_norm_area"]
+    if norm_initialization == "rand6":
         np.random.seed(314)
         z2 = np.random.normal(size=(n_mesh.fn.shape[0], 6))
+    elif norm_initialization == "rand16":
+        np.random.seed(314)
+        z2 = np.random.normal(size=(n_mesh.fn.shape[0], 16))
     elif norm_initialization == "pos_rand":
         np.random.seed(314)
         z2_rand = np.random.normal(size=(n_mesh.fn.shape[0], 3))

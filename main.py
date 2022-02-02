@@ -167,9 +167,10 @@ for epoch in range(1, FLAGS.iter+1):
         norm = normnet(dataset)
         loss_norm1 = Loss.norm_rec_loss(norm, n_mesh.fn)
         """ for full-pipeline """
-        #loss_norm2, new_fn = Loss.fn_bnf_loss(pos, norm, n_mesh, loop=FLAGS.bnfloop)
+        loss_norm2, new_fn = Loss.fn_bnf_loss(pos, norm, n_mesh, loop=FLAGS.bnfloop)
         """ for ablation study """
-        loss_norm2, new_fn = Loss.fn_bnf_loss(n_mesh.vs, norm, n_mesh, loop=FLAGS.bnfloop)
+        #loss_norm2, new_fn = Loss.fn_bnf_loss(n_mesh.vs, norm, n_mesh, loop=FLAGS.bnfloop)
+        
         if epoch <= 100:
             loss_norm2 = loss_norm2 * 0.0
 
@@ -264,9 +265,7 @@ for epoch in range(1, FLAGS.iter+1):
             #print("test_rmse: ", float(test_rmse_norm), "min_rmse: ", float(min_rmse_norm))
             writer.add_scalar("test_norm", test_rmse_norm, epoch)
             wandb.log({"MAD": mad_value, "RMSE_norm": test_rmse_norm, "norm_mad": norm_mad})
-            # if norm_mad > 0:
-            #     Mesh.display_face_normals(o1_mesh, norm.to('cpu').detach().numpy().copy())
-        
+
         else:
             print("[ERROR]: ntype error")
             exit()
