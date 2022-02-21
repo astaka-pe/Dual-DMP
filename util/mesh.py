@@ -380,8 +380,17 @@ class Mesh:
                 c0 = fnormals[i + 0]
                 c1 = fnormals[i + 1]
                 c2 = fnormals[i + 2]
-                c0 = np.clip(int(255 * (c0 + 1) / 2), 0, 255)
-                c1 = np.clip(int(255 * (c1 + 1) / 2), 0, 255)
-                c2 = np.clip(int(255 * (c2 + 1) / 2), 0, 255)
+                c0 = np.clip(int(255 * c0), 0, 255)
+                c1 = np.clip(int(255 * c1), 0, 255)
+                c2 = np.clip(int(255 * c2), 0, 255)
                 c3 = 255
                 fp.write("3 {0} {1} {2} {3} {4} {5} {6}\n".format(i0, i1, i2, c0, c1, c2, c3))
+
+    def display_face_normals(self, fn):
+        import open3d as o3d
+        self.compute_face_center()
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(np.asarray(self.fc))
+        pcd.normals = o3d.utility.Vector3dVector(np.asarray(fn))
+        o3d.visualization.draw_geometries([pcd])
+                

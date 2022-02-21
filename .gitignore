@@ -1,7 +1,10 @@
 datasets
+data
+scripts
 logs
 wandb
 _program
+ray_results
 util/__pychache__
 .ipynb_checkpoints
 
