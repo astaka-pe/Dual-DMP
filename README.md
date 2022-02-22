@@ -1,6 +1,8 @@
 # Dual Deep Mesh Prior
 
 ## One-shot Mesh Denoising with Self-supervised Dual Graph Convolutional Networks
+
+<img src="fig/Dual-DMP.png">
 ___
 
 ## Getting Started
