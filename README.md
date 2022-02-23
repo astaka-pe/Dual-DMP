@@ -5,6 +5,7 @@
 <img src="fig/Dual-DMP.png">
 
 <img src="fig/representitive.png">
+
 ___
 
 ## Getting Started
