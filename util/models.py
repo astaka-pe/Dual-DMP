@@ -235,13 +235,14 @@ def bnf(pos: torch.Tensor, fn: torch.Tensor, mesh: Mesh, loop=1) -> torch.Tensor
     return new_fn
 
 def vertex_updating(pos: torch.Tensor, norm: torch.Tensor, mesh: Mesh, loop=10) -> torch.Tensor:
-    new_pos = pos.clone()
+    new_pos = pos.detach().clone()
+    norm = norm.detach().clone()
     for iter in range(loop):
         fc = torch.sum(new_pos[mesh.faces], 1) / 3.0
-        for i, v in enumerate(pos):
+        for i in range(len(new_pos)):
             cis = fc[list(mesh.vf[i])]
             nis = norm[list(mesh.vf[i])]
-            cvis = cis - v.reshape(1, -1)
+            cvis = cis - new_pos[i].reshape(1, -1)
             ncvis = torch.sum(nis * cvis, dim=1)
             dvi = torch.sum(ncvis.reshape(-1, 1) * nis, dim=0)
             dvi /= len(mesh.vf[i])

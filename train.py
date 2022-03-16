@@ -266,4 +266,17 @@ for epoch in range(1, FLAGS.iter+1):
             print("[ERROR]: ntype error")
             exit()
 
+    # vertex updating
+    if epoch == 1000 and FLAGS.ntype == "hybrid":
+        # for consistency
+        #vs_new = Models.vertex_updating(pos, norm, o1_mesh, loop=15)
+        # for normnet
+        vs_new = Models.vertex_updating(torch.from_numpy(n_mesh.vs).to(norm.device), norm, o1_mesh, loop=15)
+        o1_mesh.vs = vs_new.to("cpu").detach().numpy().copy()
+        Mesh.compute_face_normals(o1_mesh)
+        final_mad = Loss.mad(o1_mesh.fn, gt_mesh.fn)
+        o_path = "datasets/" + mesh_name + "/output/" + str(epoch) + "_updated.obj"
+        Mesh.save(o1_mesh, o_path)
+        print("final_mad: {}".format(final_mad))
+
     wandb.save(log_dir + "/model.h5")
