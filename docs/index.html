@@ -3,88 +3,104 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Progate</title>
+  <title>Dual Deep Mesh Prior</title>
   <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
   <link rel="stylesheet" type="text/css" href="stylesheet.css">
 </head>
+
 <body>
   <header>
     <div class="container">
       <div class="header-left">
-        <img class="logo" src="https://prog-8.com/images/html/advanced/main_logo.png">
+        <!-- <img class="logo" src="https://prog-8.com/images/html/advanced/main_logo.png"> -->
       </div>
       <span class="fa fa-bars menu-icon"></span>
       <div class="header-right">
-        <a href="#">レッスン</a>
-        <a href="#">新規登録</a>
-        <a href="#" class="login">ログイン</a>
+        <!-- <a href="#">a</a>
+        <a href="#">b</a>
+        <a href="#" class="login">d</a> -->
       </div>
     </div>
   </header>
   <div class="top-wrapper">
     <div class="container">
-      <h1>LEARN TO CODE.<br>LEARN TO BE CREATIVE.</h1>
-      <p>Progateはオンラインプログラミング学習サービスです。<br>初心者にもやさしいスライドとレッスンで、ウェブサービスを作りながらプログラミングを学んでいきましょう。</p>
+      <h1>Dual Deep Mesh Prior</h1>
+      <p>One-shot Learning of Mesh Denoising with<br>Dually Self-supervised Graph Convolutional Networks</p>
       <div class="btn-wrapper">
-        <a href="#" class="btn signup">新規登録はこちら</a>
-        <p>or</p>
-        <a href="#" class="btn facebook"><span class="fa fa-facebook"></span>Facebookで登録</a>
-        <a href="#" class="btn twitter"><span class="fa fa-twitter"></span>Twitterで登録</a>
+        <a href="#" class="btn signup">paper</a>
+        <a href="#" class="btn facebook"><span class="fa fa-github"></span>Code</a>
+        <a href="#" class="btn signup">Slide</a>
       </div>
     </div>
   </div>
-  <div class="lesson-wrapper">
-    <div class="container">
-      <div class="heading">
-        <h2>Learn Where to Get Started!</h2>
+
+  <div class="container">
+    <div class="heading">
+      <h2>Abstract</h2>
+    </div>
+    <div class="lessons">
+        <p class="text-contents">This study proposed a one-shot learning framework for mesh denoising, where two graph convolutional networks that filter vertex positions and facet normals apart were trained jointly in the self-supervised manner with only a noisy input mesh. We leveraged a framework of deep image prior (DIP), a self-supervised image restoration method using a convolutional neural network (CNN), to obtain a denoised mesh without any ground-truth noise-free meshes. Compared to the original DIP that transforms a fixed random code into a noise-free image by the neural network, we reproduce vertex displacement from a fixed random code and reproduce facet normals from feature vectors that summarizes local triangle arrangements. After tuning several hyperparameters with a few validation samples, our method achieved significantly higher performance than traditional approaches working with a single noisy input mesh. Moreover, its performance is better than the other methods using deep neural networks trained with a large-scale shape dataset. The independence of our method of either large-scale datasets or ground-truth noise-free mesh will allow us to easily denoise meshes whose shapes are rarely included in the shape datasets.</p>
       </div>
-      <div class="lessons">
-        <div class="lesson">
-          <div class="lesson-icon">
-            <img src="https://prog-8.com/images/html/advanced/html.png">
-            <p>HTML & CSS</p>
-          </div>
-          <p class="text-contents">ウェブページの作成に使用される言語です。HTMLとCSSを組み合わせることで、静的なページを作り上げることができます。</p>
-        </div>
-        <div class="lesson">
-          <div class="lesson-icon">
-            <img src="https://prog-8.com/images/html/advanced/jQuery.png">
-            <p>jQuery</p>
-          </div>
-          <p class="text-contents">素敵な動きを手軽に実装できるJavaScriptライブラリです。 アニメーション効果をつけたり、Ajax（エイジャックス）を使って外部ファイルを読み込んだりと色々なことができます。</p>
-        </div>
-        <div class="lesson">
-          <div class="lesson-icon">
-            <img src="https://prog-8.com/images/html/advanced/ruby.png">
-            <p>Ruby</p>
-          </div>
-          <p class="text-contents">オープンソースの動的なプログラミング言語で、 シンプルさと高い生産性を備えています。大きなWebアプリケーションから小さな日用ツールまで、さまざまなソフトウェアを作ることができます。</p>
-        </div>
-        <div class="lesson">
-          <div class="lesson-icon">
-            <img src="https://prog-8.com/images/html/advanced/php.png">
-            <p>PHP</p>
-          </div>
-          <p class="text-contents">HTMLだけではページの内容を変えることはできません。PHPはHTMLにプログラムを埋め込み、それを可能にします。</p>
-        </div>
-      </div>
-      <div class="clear"></div>
     </div>
   </div>
-  <div class="message-wrapper">
-    <div class="container">
-      <div class="heading">
-        <h2>さぁ、あなたもProgateでプログラミングを学んでみませんか?</h2>
-        <h3>Let's learn to code, learn to be creative!</h3>
+  
+  <div class="container">
+    <div class="heading">
+      <h2>Video</h2>
+    </div>
+    <div class="lessons">
+        <p class="text-contents">Comming soon...</p>
       </div>
-      <span class="btn message">さっそく開発する</span>
     </div>
   </div>
+
+  <div class="container">
+    <div class="heading">
+      <h2>Overview</h2>
+    </div>
+    <div class="lessons">
+        <p class="text-contents">Comming soon...</p>
+        <figure><img src="images/overview.png" height="300"></figure>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="heading">
+      <h2>Results</h2>
+    </div>
+    <div class="lessons">
+        <p class="text-contents">Comming soon...</p>
+        <figure><img src="images/results.png" width="700"></figure>
+        <figure>
+          <figcaption>fandisk</figcaption>
+          <img src="images/fandisk_anim/noise.png" height="300">
+          <img id="image-place" src="images/fandisk_anim/snapshot00_L00.png" height="300">
+          <br>
+          <input type="range" id="step" min="10" max="1000" step="10" value="10">
+          <p><span id="current-value"></span> steps</p>
+          <p class="source"><span id="current-image"></span></p>
+        </figure>
+
+        <figure>
+          <figcaption>ankylosaurus</figcaption>
+          <img src="images/ankylosaurus_anim/noise.png" height="250">
+          <img id="image-place2" src="images/ankylosaurus_anim/snapshot00_L00.png" height="250">
+          <br>
+          <input type="range" id="step2" min="10" max="300" step="10" value="10">
+          <p><span id="current-value2"></span> steps</p>
+          <p class="source"><span id="current-image2"></span></p>
+        </figure>
+        
+    </div>
+  </div>
+
   <footer>
     <div class="container">
-      <img src="https://prog-8.com/images/html/advanced/footer_logo.png">
-      <p>Learn to Code, Learn to be Creative.</p>
+      <p>Dual Deep Mesh Prior</p>
     </div>
   </footer>
+
+  <script src="script.js"></script>
+
 </body>
 </html>
