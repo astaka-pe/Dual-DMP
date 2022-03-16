@@ -5,6 +5,7 @@ import sys
 import numpy as np
 from matplotlib import cm
 
+sys.path.append(".")
 from util.mesh import Mesh
 import util.loss as Loss
 
