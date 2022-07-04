@@ -41,12 +41,12 @@ python main.py -i datasets/ankylosaurus
 python main.py -i datasets/pyramid --iter 50
 ```
 
-Outputs are generated under "datasets/{model-name}/output/" with their MAD scores.
+Outputs are generated under `datasets/{model-name}/output/` with their MAD scores.
 
 ## Training with your own data
-Place a noisy mesh and a ground-truth mesh under "datasets/{model-name}/" .
-- Noisy mesh: "{model-name}-noise.obj"
-- Ground-truth mesh: "{model-name}-gt.obj"
+Place a noisy mesh and a ground-truth mesh under `datasets/{model-name}/` .
+- Noisy mesh: `{model-name}_noise.obj`
+- Ground-truth mesh: `{model-name}_gt.obj`
 
 Run 
 ```
@@ -64,4 +64,10 @@ You should set appropriate weights as discribed in the paper.
 After runnning `preprocess.py`, run
 ```
 python main4real.py -i datasets/{model-name}
+```
+
+## You can also create noisy data
+Run
+```
+python preprocess/noisemaker.py -i datasets/{model-name}/{model-name}.obj --level {noise-level}
 ```

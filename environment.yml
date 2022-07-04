@@ -1,4 +1,4 @@
-name: dmp
+name: ddmp
 channels:
   - defaults
   - pytorch
@@ -24,3 +24,4 @@ dependencies:
     - torch-cluster
     - torch-spline-conv
     - torch-geometric
+    - pymeshlab==2021.10

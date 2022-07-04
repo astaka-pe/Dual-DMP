@@ -3,8 +3,24 @@ import numpy as np
 import shutil
 import os
 import argparse
+import sys
+
+sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
 from util.mesh import Mesh
 import util.loss as Loss
+
+def get_parser():
+    parser = argparse.ArgumentParser(description='create datasets(noisy mesh & smoothed mesh) from a single clean mesh')
+    parser.add_argument('-i', '--input', type=str, required=True)
+    parser.add_argument('--noise', type=str, default="gaussian")
+    parser.add_argument('--level', type=float, default="0.2")
+    parser.add_argument('--step', type=int, default=30)
+    args = parser.parse_args()
+
+    for k, v in vars(args).items():
+        print('{:12s}: {}'.format(k, v))
+
+    return args
 
 def smooth(ms, step):
     ms.apply_filter("laplacian_smooth", stepsmoothnum=step, cotangentweight=False)
@@ -26,28 +42,19 @@ def gausian_noise(mesh, noise_level):
     return mesh
     
 def main():
-    """ create datasets(noisy mesh & smoothed mesh) from a single clean mesh """
-    parser = argparse.ArgumentParser(description='preprocessing')
-    parser.add_argument('-i', '--input', type=str, required=True)
-    parser.add_argument('--noise', type=str, default="gaussian")
-    parser.add_argument('--level', type=float, default="0.2")
-    parser.add_argument('--step', type=int, default=30)
-    FLAGS = parser.parse_args()
-
-    for k, v in vars(FLAGS).items():
-        print('{:12s}: {}'.format(k, v))
+    args = get_parser()
 
     ms = ml.MeshSet()
-    root_dir = os.path.dirname(FLAGS.input)
+    root_dir = os.path.dirname(args.input)
     mesh_name = root_dir.split("/")[-1]
 
     n_file = os.path.join(root_dir, mesh_name + "_noise.obj")
     s_file = os.path.join(root_dir, mesh_name + "_smooth.obj")
     g_file = os.path.join(root_dir, mesh_name + "_gt.obj")
 
-    ms.load_new_mesh(FLAGS.input)
+    ms.load_new_mesh(args.input)
     os.makedirs(os.path.join(root_dir, "original"), exist_ok=True)
-    shutil.move(FLAGS.input, os.path.join(root_dir, "original", os.path.basename(FLAGS.input)))
+    shutil.move(args.input, os.path.join(root_dir, "original", os.path.basename(args.input)))
     normalize(ms)                       # pre-scaling & transformation
     ms.save_current_mesh(g_file)        # pre-saving
     g_mesh = Mesh(g_file)
@@ -56,17 +63,17 @@ def main():
     g_mesh.save(g_file)
 
     n_mesh = Mesh(g_file)
-    if FLAGS.noise == "gaussian":
-        n_mesh = gausian_noise(n_mesh, FLAGS.level)
+    if args.noise == "gaussian":
+        n_mesh = gausian_noise(n_mesh, args.level)
         n_mesh.compute_face_normals()
         n_mesh.save(n_file)
     else:
-        n_mesh = gausian_noise(n_mesh, FLAGS.level)
+        n_mesh = gausian_noise(n_mesh, args.level)
         n_mesh.compute_face_normals()
         n_mesh.save(n_file)
 
     ms.load_new_mesh(n_file)
-    smooth(ms, step=FLAGS.step)         # smoothing
+    smooth(ms, step=args.step)         # smoothing
     ms.save_current_mesh(s_file)
 
     mad = Loss.mad(n_mesh.fn, g_mesh.fn)
