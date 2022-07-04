@@ -1,6 +1,7 @@
 # Dual Deep Mesh Prior
 
-## One-shot Mesh Denoising with Self-supervised Dual Graph Convolutional Networks
+## One-shot Learning of Mesh Denoising with Dually Self-supervised Graph Convolutional Networks
+Paper accepted by ECCV 2022 [[comming soon]]().
 
 <img src="fig/Dual-DMP.png">
 
