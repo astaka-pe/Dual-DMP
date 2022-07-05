@@ -5,7 +5,7 @@ logs
 wandb
 _program
 ray_results
-util/__pychache__
+util/__pycache__
 .ipynb_checkpoints
 
 *.obj

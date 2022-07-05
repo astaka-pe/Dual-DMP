@@ -14,7 +14,6 @@ class Mesh:
         self.device = 'cpu'
         self.build_gemm() #self.edges, self.ve
         self.compute_vert_normals()
-        #self.compute_fn_sphere()
         self.build_v2v()
         self.build_vf()
         if build_mat:
@@ -84,24 +83,6 @@ class Mesh:
         self.gemm_edges = np.array(edge_nb, dtype=np.int64)
         self.sides = np.array(sides, dtype=np.int64)
         self.edges_count = edges_count
-        # lots of DS for loss
-        """
-        self.nvs, self.nvsi, self.nvsin, self.ve_in = [], [], [], []
-        for i, e in enumerate(self.ve):
-            self.nvs.append(len(e))
-            self.nvsi += len(e) * [i]
-            self.nvsin += list(range(len(e)))
-            self.ve_in += e
-        self.vei = reduce(lambda a, b: a + b, self.vei, [])
-        self.vei = torch.from_numpy(np.array(self.vei).ravel()).to(self.device).long()
-        self.nvsi = torch.from_numpy(np.array(self.nvsi).ravel()).to(self.device).long()
-        self.nvsin = torch.from_numpy(np.array(self.nvsin).ravel()).to(self.device).long()
-        self.ve_in = torch.from_numpy(np.array(self.ve_in).ravel()).to(self.device).long()
-
-        self.max_nvs = max(self.nvs)
-        self.nvs = torch.Tensor(self.nvs).to(self.device).float()
-        self.edge2key = edge2key
-        """
 
     def compute_face_normals(self):
         face_normals = np.cross(self.vs[self.faces[:, 1]] - self.vs[self.faces[:, 0]], self.vs[self.faces[:, 2]] - self.vs[self.faces[:, 0]])
@@ -129,12 +110,6 @@ class Mesh:
         faces = self.faces
         vs = self.vs
         self.fc = np.sum(vs[faces], 1) / 3.0
-    
-    def compute_fn_sphere(self):
-        fn = self.fn
-        u = (np.arctan2(fn[:, 1], fn[:, 0]) + np.pi) / (2.0 * np.pi)
-        v = np.arctan2(np.sqrt(fn[:, 0]**2 + fn[:, 1]**2), fn[:, 2]) / np.pi
-        self.fn_uv = np.stack([u, v]).T
     
     def build_uni_lap(self):
         """compute uniform laplacian matrix"""
@@ -198,7 +173,6 @@ class Mesh:
         self.v2f_mat = torch.sparse.FloatTensor(v2f_inds, v2f_vals, size=torch.Size([len(self.vs), len(self.faces)]))
 
         """ build face-to-face (1ring) matrix """        
-        f_edges = np.array([[i] * 3 for i in range(len(self.faces))])
         f2f = [[] for _ in range(len(self.faces))]
         self.f_edges = [[] for _ in range(2)]
         for i, f in enumerate(self.faces):
@@ -211,24 +185,7 @@ class Mesh:
 
         self.f2f = np.array(f2f)
         self.f_edges = np.array(self.f_edges)
-        """
-        f2f_inds = torch.from_numpy(self.f_edges).long()
-        f2f_vals = torch.ones(f2f_inds.shape[1]).float()
-        self.f2f_mat = torch.sparse.FloatTensor(v2f_inds, v2f_vals, size=torch.Size([len(self.faces), len(self.faces)]))
-        """
-        
-        """ build face-to-face (2ring) sparse matrix 
-        self.f2f = np.array(f2f)
-        f2ring = self.f2f[self.f2f].reshape(-1, 9)
-        self.f2ring = [set(f) for f in f2ring]
-        self.f2ring = [list(self.f2ring[i] | set(f)) for i, f in enumerate(self.f2f)]
-        
-        self.f_edges = np.concatenate((self.f2f.reshape(1, -1), f_edges.reshape(1, -1)), 0)
-        mat_inds = torch.from_numpy(self.f_edges).long()
-        #mat_vals = torch.ones(mat_inds.shape[1]).float()
-        mat_vals = torch.from_numpy(self.fa[self.f_edges[0]]).float()
-        self.f2f_mat = torch.sparse.FloatTensor(mat_inds, mat_vals, size=torch.Size([len(self.faces), len(self.faces)]))
-        """
+
     def build_v2v(self):
         """ compute adjacent matrix """
         edges = self.edges
@@ -251,34 +208,7 @@ class Mesh:
             e0 = min(e)
             e1 = max(e)
             e_dict[(e0, e1)] = []
-        """
-        for v in range(len(vs)):
-            n_f = vf[v]
-            for f in n_f:
-                n_v = faces[f]
-                if n_v[1] == v:
-                    n_v = n_v[[1,2,0]]
-                elif n_v[2] == v:
-                    n_v = n_v[[2,1,0]]
-                s = vs[n_v[1]] - vs[n_v[0]]
-                t = vs[n_v[2]] - vs[n_v[1]]
-                u = vs[n_v[0]] - vs[n_v[2]]
-                i1 = np.inner(-s, t)
-                i2 = np.inner(-t, u)
-                n1 = np.linalg.norm(s) * np.linalg.norm(t)
-                n2 = np.linalg.norm(t) * np.linalg.norm(u)
-                c1 = np.clip(i1 / n1, -1.0, 1.0)
-                c2 = np.clip(i2 / n2, -1.0, 1.0)
-                cot1 = c1 / np.sqrt(1 - c1 ** 2)
-                cot2 = c2 / np.sqrt(1 - c2 ** 2)
-                keys1 = (min(n_v[0], n_v[1]), max(n_v[0], n_v[1]))
-                keys2 = (min(n_v[0], n_v[2]), max(n_v[0], n_v[2]))
-                e_dict[keys1].append(cot2)
-                e_dict[keys2].append(cot1)
-
-        for e in e_dict:
-            e_dict[e] = -0.25 * (e_dict[e][0] + e_dict[e][1] + e_dict[e][2] + e_dict[e][3])
-        """
+        
         for f in faces:
             s = vs[f[1]] - vs[f[0]]
             t = vs[f[2]] - vs[f[1]]
@@ -385,12 +315,3 @@ class Mesh:
                 c2 = np.clip(int(255 * c2), 0, 255)
                 c3 = 255
                 fp.write("3 {0} {1} {2} {3} {4} {5} {6}\n".format(i0, i1, i2, c0, c1, c2, c3))
-
-    def display_face_normals(self, fn):
-        import open3d as o3d
-        self.compute_face_center()
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(np.asarray(self.fc))
-        pcd.normals = o3d.utility.Vector3dVector(np.asarray(fn))
-        o3d.visualization.draw_geometries([pcd])
-                

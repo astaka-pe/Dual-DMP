@@ -258,15 +258,6 @@ def bnf(fn: Union[torch.Tensor, np.ndarray], mesh: Mesh, sigma_s=0.7, sigma_c=0.
 
     return new_fn, new_mesh
 
-def test_loss(fn, g_fn):
-    g_fn = torch.from_numpy(g_fn).to(fn.device)
-    dif_fn = g_fn - fn
-    dif_fn = dif_fn ** 2
-    loss = torch.sum(dif_fn, dim=1)
-    loss = torch.sum(loss, dim=0) / fn.shape[0]
-    loss = torch.sqrt(loss + 1.0e-12)
-    return loss
-
 def mad(norm1: Union[np.ndarray, torch.Tensor], norm2: Union[np.ndarray, torch.Tensor]) -> np.ndarray:
     """ mean angular distance for (face, vertex) normals """
     if type(norm1) == torch.Tensor:
