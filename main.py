@@ -34,7 +34,7 @@ def get_parser():
 
 def main():
     args = get_parser()
-
+    
     """ --- create dataset --- """
     mesh_dic, dataset = Datamaker.create_dataset(args.input)
     mesh_name = mesh_dic["mesh_name"]
@@ -46,7 +46,7 @@ def main():
     normnet = NormalNet(device).to(device)
     optimizer_pos = torch.optim.Adam(posnet.parameters(), lr=args.pos_lr)
     optimizer_norm = torch.optim.Adam(normnet.parameters(), lr=args.norm_lr)
-
+    
     os.makedirs("datasets/" + mesh_name + "/output", exist_ok=True)
 
     """ --- initial condition --- """

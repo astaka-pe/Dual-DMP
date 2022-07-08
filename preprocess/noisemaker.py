@@ -79,5 +79,6 @@ def main():
     mad = Loss.mad(n_mesh.fn, g_mesh.fn)
     print("[Finished] Vertices: {}, faces: {}, mad: {:.4f}".format(n_mesh.vs.shape[0], n_mesh.faces.shape[0], mad))
 
+
 if __name__ == "__main__":
     main()

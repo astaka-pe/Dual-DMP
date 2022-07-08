@@ -3,16 +3,16 @@
 ## One-shot Learning of Mesh Denoising with Dually Self-supervised Graph Convolutional Networks
 Paper accepted by ECCV 2022 [[comming soon]]().
 
-<img src="fig/Dual-DMP.png">
+<img src="fig/overview.png">
 
 <img src="fig/representitive.png">
 
 ___
 
-## Getting Started
+## 1. Getting Started
 
 
-### Installation
+### 1.1 Installation
 ```
 git clone https://github.com/astaka-pe/Dual-DMP
 cd Dual-DMP
@@ -20,31 +20,37 @@ conda env create -f environment.yml
 conda activate ddmp
 ```
 
-### Preparation
+#### Tested environment
+- Ubuntu 20.04
+- NVIDIA GeForce TITAN X (12GB)
+
+### 1.2 Preparation
 
 The Dataset is distributed as a zip file. Please unzip and place it under Dual-DMP directory. 
 
-## Training
+## 2. Training
 
-### CAD model
+- CAD model
 
 ```
 python main.py -i datasets/fandisk --k1 3 --k2 0 --k3 3 --k4 4 --k5 2 --bnfloop 5
 ```
 
-### Non-CAD model
+- Non-CAD model
 ```
 python main.py -i datasets/ankylosaurus
 ```
 
-### Real-scanned model
+- Real-scanned model
 ```
 python main.py -i datasets/pyramid --iter 50
 ```
 
-Outputs are generated under `datasets/{model-name}/output/` with their MAD scores.
+Outputs will be generated under `datasets/{model-name}/output/` with their MAD scores.
 
-## Training with your own data
+___
+## Appendix
+### Training with your own data
 Place a noisy mesh and a ground-truth mesh under `datasets/{model-name}/` .
 - Noisy mesh: `{model-name}_noise.obj`
 - Ground-truth mesh: `{model-name}_gt.obj`
@@ -61,13 +67,13 @@ python main.py -i datasets/{model-name}
 ```
 You should set appropriate weights as discribed in the paper.
 
-## If you don't have ground-truth data
+### Training without using ground-truth data
 After runnning `preprocess.py`, run
 ```
 python main4real.py -i datasets/{model-name}
 ```
 
-## You can also create noisy data
+### Creating noisy data
 Run
 ```
 python preprocess/noisemaker.py -i datasets/{model-name}/{model-name}.obj --level {noise-level}
