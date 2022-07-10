@@ -1,13 +1,15 @@
-<img src="fig/anim.gif" align="right" width="400">
-
-<br><br><br><br><br>
-
 # Dual Deep Mesh Prior
 
 ## One-shot Learning of Mesh Denoising with Dually Self-supervised Graph Convolutional Networks
 Paper accepted by ECCV 2022 [[comming soon]]().
 
+<img src="fig/anim.gif" align="center" width="1000">
+
+### Method Overview
+
 <img src="fig/overview.png">
+
+### Results
 
 <img src="fig/representitive.png">
 
