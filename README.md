@@ -1,9 +1,9 @@
 # Dual Deep Mesh Prior
 
-## One-shot Learning of Mesh Denoising with Dually Self-supervised Graph Convolutional Networks
-Paper accepted by ECCV 2022 [[comming soon]]().
+## Learning Self-prior for Mesh Denoising using Graph Convolutional Networks
+Paper accepted by ECCV 2022 [[comming soon]](https://eccv2022.ecva.net/).
 
-<img src="fig/anim.gif" align="center" width="1000">
+<img src="fig/anim.gif" align="center" width="1500">
 
 ### Method Overview
 
