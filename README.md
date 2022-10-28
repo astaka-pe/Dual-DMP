@@ -1,26 +1,27 @@
-# Dual Deep Mesh Prior
+# Dual Deep Mesh Prior [ECCV2022]
 
-## Learning Self-prior for Mesh Denoising using Dual Graph Convolutional Networks
-Paper accepted by [ECCV2022](https://eccv2022.ecva.net/program/accepted-papers/#:~:text=Yu%20(ETH%20Zurich)-,4934,-Learning%20Self%2Dprior).
+### [Paper](https://www.ecva.net/papers/eccv_2022/papers_ECCV/html/4934_ECCV_2022_paper.php) | [Poster](https://drive.google.com/file/d/1NS-2wkIeMXFGOlP778LojQLFSIHNMu8r/view?usp=sharing) | Project-page
 
-[paper](https://www.ecva.net/papers/eccv_2022/papers_ECCV/html/4934_ECCV_2022_paper.php) | poster | project-page
+The official implementation of **Learning Self-Prior for Mesh Denoising using Dual Graph Convolutional Networks**, [ECCV2022](https://eccv2022.ecva.net/program/accepted-papers/#:~:text=Yu%20(ETH%20Zurich)-,4934,-Learning%20Self%2Dprior).
+
+A deep-learning framework for mesh denoising from a single noisy input, where two graph convolutional networks are trained jointly to filter vertex positions and facet normals apart.
 
 <img src="fig/anim.gif" align="top" width="400">
 
-### Method Overview
+## Method Overview
 
 <img src="fig/overview.png">
 
-### Results
+## Results
 
 <img src="fig/representitive.png">
 
 ___
 
-## 1. Getting Started
+## Getting Started
 
 
-### 1.1 Installation
+### 1. Installation
 ```
 git clone https://github.com/astaka-pe/Dual-DMP
 cd Dual-DMP
@@ -32,11 +33,11 @@ conda activate ddmp
 - Ubuntu 20.04
 - NVIDIA GeForce TITAN X (12GB)
 
-### 1.2 Preparation
+### 2. Preparation
 
 The Dataset is distributed as a zip file. Please unzip and place it under Dual-DMP directory. 
 
-## 2. Training
+### 3. Training
 
 - CAD model
 
@@ -85,4 +86,15 @@ python main4real.py -i datasets/{model-name}
 Run
 ```
 python preprocess/noisemaker.py -i datasets/{model-name}/{model-name}.obj --level {noise-level}
+```
+___
+
+## Citation
+```
+@InProceedings{hattori2022ddmp,
+  author        = {Hattori, Shota and Yatagawa, Tatsuya and Ohtake, Yutaka and Suzuki, Hiromasa},
+  title         = {Learning Self-Prior for Mesh Denoising using Dual Graph Convolutional Networks},
+  booktitle     = "European Conference on Computer Vision (ECCV)",
+  year          = 2022
+}
 ```
