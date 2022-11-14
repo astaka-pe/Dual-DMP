@@ -20,6 +20,9 @@ ___
 
 ## Getting Started
 
+### Tested environment
+- ![](https://img.shields.io/badge/OS-ubuntu_20.04-blue)
+- ![](https://img.shields.io/badge/GPU-NVIDIA_GeForce_TITAN_X_12GB-blue)
 
 ### 1. Installation
 ```
@@ -28,10 +31,6 @@ cd Dual-DMP
 conda env create -f environment.yml
 conda activate ddmp
 ```
-
-#### Tested environment
-- Ubuntu 20.04
-- NVIDIA GeForce TITAN X (12GB)
 
 ### 2. Preparation
 
@@ -94,7 +93,8 @@ ___
 @InProceedings{hattori2022ddmp,
   author        = {Hattori, Shota and Yatagawa, Tatsuya and Ohtake, Yutaka and Suzuki, Hiromasa},
   title         = {Learning Self-Prior for Mesh Denoising using Dual Graph Convolutional Networks},
-  booktitle     = "European Conference on Computer Vision (ECCV)",
-  year          = 2022
+  booktitle     = {Proceedings of the European Conference on Computer Vision (ECCV)},
+  year          = {2022},
+  doi           = {10.1007/978-3-031-20062-5_21}
 }
 ```
