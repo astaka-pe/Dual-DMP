@@ -22,6 +22,7 @@ ___
 
 ### Tested environment
 - ![](https://img.shields.io/badge/OS-ubuntu_20.04-blue)
+- ![](https://img.shields.io/badge/CUDA-10.2-blue) ![](https://img.shields.io/badge/CUDA-9.0-blue)
 - ![](https://img.shields.io/badge/GPU-NVIDIA_GeForce_TITAN_X_12GB-blue)
 
 ### 1. Installation
