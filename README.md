@@ -2,7 +2,7 @@
 
 ### [Paper](https://www.ecva.net/papers/eccv_2022/papers_ECCV/html/4934_ECCV_2022_paper.php) | [Poster](https://drive.google.com/file/d/1NS-2wkIeMXFGOlP778LojQLFSIHNMu8r/view?usp=sharing) | Project-page
 
-The official implementation of **Learning Self-Prior for Mesh Denoising using Dual Graph Convolutional Networks**, [ECCV2022](https://eccv2022.ecva.net/program/accepted-papers/#:~:text=Yu%20(ETH%20Zurich)-,4934,-Learning%20Self%2Dprior).
+The official implementation of **Learning Self-prior for Mesh Denoising using Dual Graph Convolutional Networks**, [ECCV2022](https://eccv2022.ecva.net/program/accepted-papers/#:~:text=Yu%20(ETH%20Zurich)-,4934,-Learning%20Self%2Dprior).
 
 A deep-learning framework for mesh denoising from a single noisy input, where two graph convolutional networks are trained jointly to filter vertex positions and facet normals apart.
 
@@ -21,9 +21,9 @@ ___
 ## Getting Started
 
 ### Tested environment
-- ![](https://img.shields.io/badge/OS-ubuntu_20.04-blue)
-- ![](https://img.shields.io/badge/CUDA-10.2-blue) ![](https://img.shields.io/badge/CUDA-9.0-blue)
-- ![](https://img.shields.io/badge/GPU-NVIDIA_GeForce_TITAN_X_12GB-blue)
+- <img src="https://img.shields.io/badge/OS-ubuntu_20.04-blue" alt="ubuntu 20.04">
+- <img src="https://img.shields.io/badge/CUDA-10.2-blue" alt="CUDA 10.2"> <img src="https://img.shields.io/badge/CUDA-9.0-blue" alt="CUDA 9.0">
+- <img src="https://img.shields.io/badge/GPU-NVIDIA_GeForce_TITAN_X_12GB-blue" alt="NVIDIA GeForce TITAN X 12GB">
 
 ### 1. Installation
 ```
@@ -93,7 +93,7 @@ ___
 ```
 @InProceedings{hattori2022ddmp,
   author        = {Hattori, Shota and Yatagawa, Tatsuya and Ohtake, Yutaka and Suzuki, Hiromasa},
-  title         = {Learning Self-Prior for Mesh Denoising using Dual Graph Convolutional Networks},
+  title         = {Learning Self-prior for Mesh Denoising using Dual Graph Convolutional Networks},
   booktitle     = {Proceedings of the European Conference on Computer Vision (ECCV)},
   year          = {2022},
   doi           = {10.1007/978-3-031-20062-5_21}
