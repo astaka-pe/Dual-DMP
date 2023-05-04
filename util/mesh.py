@@ -193,7 +193,8 @@ class Mesh:
         v2v_inds = torch.from_numpy(np.concatenate([v2v_inds, v2v_inds[[1, 0]]], axis=1)).long()
         v2v_vals = torch.ones(v2v_inds.shape[1]).float()
         self.v2v_mat = torch.sparse.FloatTensor(v2v_inds, v2v_vals, size=torch.Size([len(self.vs), len(self.vs)]))
-        self.v_dims = torch.sum(self.v2v_mat.to_dense(), axis=1)
+        # self.v_dims = torch.sum(self.v2v_mat.to_dense(), axis=1)
+        self.v_dims = torch.sparse.sum(self.v2v_mat, dim=1).to_dense()
 
     def build_mesh_lap(self):
         """compute mesh laplacian matrix"""
