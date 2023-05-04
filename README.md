@@ -1,6 +1,6 @@
 # Dual Deep Mesh Prior [ECCV2022]
 
-### [Paper](https://www.ecva.net/papers/eccv_2022/papers_ECCV/html/4934_ECCV_2022_paper.php) | [Supp](https://www.ecva.net/papers/eccv_2022/papers_ECCV/papers/136630358-supp.pdf) | [Poster](https://drive.google.com/file/d/1NS-2wkIeMXFGOlP778LojQLFSIHNMu8r/view?usp=sharing) | Project-page
+### [Paper](https://www.ecva.net/papers/eccv_2022/papers_ECCV/papers/136630358.pdf) | [Supp](https://www.ecva.net/papers/eccv_2022/papers_ECCV/papers/136630358-supp.pdf) | [Poster](https://drive.google.com/file/d/1NS-2wkIeMXFGOlP778LojQLFSIHNMu8r/view?usp=sharing)
 
 The official implementation of **Learning Self-prior for Mesh Denoising using Dual Graph Convolutional Networks**, [ECCV2022](https://eccv2022.ecva.net/program/accepted-papers/#:~:text=Yu%20(ETH%20Zurich)-,4934,-Learning%20Self%2Dprior).
 
