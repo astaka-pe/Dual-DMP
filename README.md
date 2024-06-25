@@ -20,39 +20,51 @@ ___
 
 ## Getting Started
 
-### Tested environment
-- <img src="https://img.shields.io/badge/OS-ubuntu_20.04-blue" alt="ubuntu 20.04">
-- <img src="https://img.shields.io/badge/CUDA-10.2-blue" alt="CUDA 10.2"> <img src="https://img.shields.io/badge/CUDA-9.0-blue" alt="CUDA 9.0">
-- <img src="https://img.shields.io/badge/GPU-NVIDIA_GeForce_TITAN_X_12GB-blue" alt="NVIDIA GeForce TITAN X 12GB">
+### 0. Environments
+
+<img src="https://img.shields.io/badge/GPU-NVIDIA_GeForce_RTX_4070_12GB-blue" alt="NVIDIA GeForce TITAN X 12GB">
+
+```
+python==3.10
+torch==1.13.1
+torch-geometric==2.2.0
+```
 
 ### 1. Installation
 ```
 git clone https://github.com/astaka-pe/Dual-DMP
 cd Dual-DMP
-conda env create -f environment.yml
-conda activate ddmp
+docker image build -t astaka-pe/ddmp .
+docker run -itd --gpus all -p 8008:8008 --name ddmp -v .:/work astaka-pe/ddmp
+docker exec -it ddmp /bin/bash
 ```
+<!-- conda env create -f environment.yml
+conda activate ddmp -->
 
 ### 2. Preparation
 
 The Dataset is distributed as a zip file. Please unzip and place it under Dual-DMP directory. 
+
+```
+unzip datasets.zip
+```
 
 ### 3. Training
 
 - CAD model
 
 ```
-python main.py -i datasets/fandisk --k1 3 --k2 0 --k3 3 --k4 4 --k5 2 --bnfloop 5
+python3 main.py -i datasets/fandisk --k1 3 --k2 0 --k3 3 --k4 4 --k5 2 --bnfloop 5
 ```
 
 - Non-CAD model
 ```
-python main.py -i datasets/ankylosaurus
+python3 main.py -i datasets/ankylosaurus
 ```
 
 - Real-scanned model
 ```
-python main.py -i datasets/pyramid --iter 50
+python3 main.py -i datasets/pyramid --iter 50
 ```
 
 Outputs will be generated under `datasets/{model-name}/output/` with their MAD scores.
@@ -66,26 +78,26 @@ Place a noisy mesh and a ground-truth mesh under `datasets/{model-name}/` .
 
 Run 
 ```
-python preprocess/preprocess.py -i datasets/{model-name}
+python3 preprocess/preprocess.py -i datasets/{model-name}
 ```
 for edge-based normalization and creating initial smoothed mesh.
 
 Finally, run
 ```
-python main.py -i datasets/{model-name}
+python3 main.py -i datasets/{model-name}
 ```
 You should set appropriate weights as discribed in the paper.
 
 ### Training without using ground-truth data
 After runnning `preprocess.py`, run
 ```
-python main4real.py -i datasets/{model-name}
+python3 main4real.py -i datasets/{model-name}
 ```
 
 ### Creating noisy data
 Run
 ```
-python preprocess/noisemaker.py -i datasets/{model-name}/{model-name}.obj --level {noise-level}
+python3 preprocess/noisemaker.py -i datasets/{model-name}/{model-name}.obj --level {noise-level}
 ```
 ___
 

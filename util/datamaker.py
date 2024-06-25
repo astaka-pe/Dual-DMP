@@ -11,8 +11,8 @@ class Dataset:
         self.num_nodes = data.num_nodes
         self.num_edges = data.num_edges
         self.num_node_features = data.num_node_features
-        self.contains_isolated_nodes = data.contains_isolated_nodes()
-        self.contains_self_loops = data.contains_self_loops()
+        self.contains_isolated_nodes = data.has_isolated_nodes()
+        self.contains_self_loops = data.has_self_loops()
         self.z1 = data['z1']
         self.z2 = data['z2']
         self.x_pos = data['x_pos']

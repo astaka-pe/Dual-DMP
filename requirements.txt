@@ -1,0 +1,18 @@
+cython
+numpy==1.26.4
+matplotlib==3.3
+open3d
+scikit-learn==1.0.2
+pymeshlab==2021.10
+pymeshfix==0.16.1
+tqdm==4.61.1
+wandb==0.12.1
+opencv-python
+protobuf==3.20
+torch==1.13.1
+--find-links  https://pytorch-geometric.com/whl/torch-1.13.1+cu117.html
+torch-scatter==2.1.0
+torch-sparse==0.6.16
+torch-cluster==1.6.0
+torch-spline-conv==1.2.1
+torch-geometric==2.2.0
