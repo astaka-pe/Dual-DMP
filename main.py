@@ -1,9 +1,11 @@
 import torch
 import torch.nn as nn
+import numpy as np
 import argparse
 import os
 from tqdm import tqdm
-
+import viser
+import viser.transforms as tf
 import util.loss as Loss
 import util.models as Models
 import util.datamaker as Datamaker
@@ -25,6 +27,8 @@ def get_parser():
     parser.add_argument("--grad_crip", type=float, default=0.8)
     parser.add_argument("--bnfloop", type=int, default=1)
     parser.add_argument("--gpu", type=int, default=0)
+    parser.add_argument("--viewer", action="store_true", default=True)
+    parser.add_argument("--port", type=int, default=8080)
     args = parser.parse_args()
 
     for k, v in vars(args).items():
@@ -35,6 +39,9 @@ def get_parser():
 def main():
     args = get_parser()
     
+    if args.viewer:
+        server = viser.ViserServer(port=args.port)
+
     """ --- create dataset --- """
     mesh_dic, dataset = Datamaker.create_dataset(args.input)
     mesh_name = mesh_dic["mesh_name"]
@@ -52,6 +59,28 @@ def main():
     """ --- initial condition --- """
     init_mad = mad_value = Loss.mad(n_mesh.fn, gt_mesh.fn)
     print("initial_mad: {:.3f}".format(init_mad))
+
+    scale = 2 / np.max(n_mesh.vs)
+    if args.viewer:
+        print("\n\033[42m Viewer at: http://localhost:{} \033[0m\n".format(args.port))
+        with server.gui.add_folder("Training"):
+            server.scene.add_mesh_simple(
+                name="/input",
+                vertices=n_mesh.vs * scale,
+                faces=n_mesh.faces,
+                flat_shading=True,
+                visible=False,
+            )
+            gui_counter = server.gui.add_number(
+                "Epoch",
+                initial_value=0,
+                disabled=True,
+            )
+            gui_mad = server.gui.add_number(
+                "MAD",
+                initial_value=init_mad,
+                disabled=True,
+            )
 
     """ --- learning loop --- """
     with tqdm(total=args.iter) as pbar:
@@ -92,8 +121,20 @@ def main():
                 Mesh.compute_vert_normals(o1_mesh)
 
                 mad_value = Loss.mad(o1_mesh.fn, gt_mesh.fn)
-                o_path = "datasets/" + mesh_name + "/output/" + str(epoch) + "_ddmp={:.3f}.obj".format(mad_value)
-                Mesh.save(o1_mesh, o_path)
+
+                if epoch % 100 == 0:
+                    o_path = "datasets/" + mesh_name + "/output/" + str(epoch) + "_ddmp={:.3f}.obj".format(mad_value)
+                    Mesh.save(o1_mesh, o_path)
+                
+                if args.viewer:
+                    server.scene.add_mesh_simple(
+                        name="/output",
+                        vertices=o1_mesh.vs * scale,
+                        faces=o1_mesh.faces,
+                        flat_shading=True,    
+                    )
+                    gui_counter.value = epoch
+                    gui_mad.value = mad_value
 
                 if vs_update:
                     updated_pos = Models.vertex_updating(pos, norm, o1_mesh, loop=15)

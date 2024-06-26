@@ -9,6 +9,7 @@ tqdm==4.61.1
 wandb==0.12.1
 opencv-python
 protobuf==3.20
+viser==0.2.1
 torch==1.13.1
 --find-links  https://pytorch-geometric.com/whl/torch-1.13.1+cu117.html
 torch-scatter==2.1.0

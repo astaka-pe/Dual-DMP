@@ -35,7 +35,7 @@ torch-geometric==2.2.0
 git clone https://github.com/astaka-pe/Dual-DMP
 cd Dual-DMP
 docker image build -t astaka-pe/ddmp .
-docker run -itd --gpus all -p 8008:8008 --name ddmp -v .:/work astaka-pe/ddmp
+docker run -itd --gpus all -p 8080:8080 --name ddmp -v .:/work astaka-pe/ddmp
 docker exec -it ddmp /bin/bash
 ```
 <!-- conda env create -f environment.yml
@@ -66,6 +66,10 @@ python3 main.py -i datasets/ankylosaurus
 ```
 python3 main.py -i datasets/pyramid --iter 50
 ```
+
+You can monitor the training progress through the web viewer. (Default: http://localhost:8080)
+
+<img src="fig/viewer.gif" width="800">
 
 Outputs will be generated under `datasets/{model-name}/output/` with their MAD scores.
 
